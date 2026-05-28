@@ -318,16 +318,42 @@ class RhythmBotGUI:
                                  anchor="e", font=("", 10))
         self.lbl_keys.pack(side=tk.RIGHT, padx=5)
 
-    # ─── 미리보기 ───
+    # ─── 미리보기 (별도 창) ───
 
     def _build_preview(self):
-        f = tk.LabelFrame(self.main, text="  미리보기  ", font=("", 10),
-                          bg=BG, fg="#888888", padx=5, pady=5)
-        f.pack(fill=tk.BOTH, expand=True, padx=15, pady=3)
+        # 메인 창에는 미리보기 열기 버튼만
+        f = tk.Frame(self.main, bg=BG)
+        f.pack(fill=tk.X, padx=15, pady=3)
+        self.btn_preview = tk.Button(
+            f, text="🔍 미리보기 창 열기", bg=BTN_BG, fg=FG,
+            activebackground=BTN_ACTIVE, command=self._open_preview_window
+        )
+        self.btn_preview.pack(fill=tk.X)
 
-        self.preview_label = tk.Label(f, text="시작하면 여기에 감지 화면이 표시됩니다",
-                                      bg="#111111", fg="#666666")
-        self.preview_label.pack(fill=tk.BOTH, expand=True)
+        # 미리보기 창 참조
+        self._preview_win = None
+        self._preview_canvas = None
+        self._preview_photo = None
+
+    def _open_preview_window(self):
+        """고정 크기 미리보기 창 열기"""
+        if self._preview_win is not None:
+            try:
+                self._preview_win.lift()
+                return
+            except tk.TclError:
+                self._preview_win = None
+
+        win = tk.Toplevel(self.root)
+        win.title("미리보기 - 노트 감지")
+        win.geometry("500x400")
+        win.configure(bg="#111111")
+        win.protocol("WM_DELETE_WINDOW", lambda: self._close_preview_window())
+
+        self._preview_canvas = tk.Label(win, bg="#111111")
+        self._preview_canvas.pack(fill=tk.BOTH, expand=True)
+
+        self._preview_win = win
 
     # ─── 로그 ───
 
@@ -512,7 +538,7 @@ class RhythmBotGUI:
             keys = [k.strip() for k in self.var_keys.get().split(",")]
             self.input_mgr.configure(
                 key_bindings=keys,
-                debounce_ms=50,
+                debounce_ms=15,
                 input_delay_ms=self.var_delay.get(),
             )
             self.input_mgr.start()
@@ -585,9 +611,9 @@ class RhythmBotGUI:
                 judge_notes = self.detector.get_notes_near_judge(
                     notes=notes,
                     judge_line_y=judge_y,
-                    perfect_range=10,
-                    great_range=25,
-                    good_range=40,
+                    perfect_range=20,
+                    great_range=45,
+                    good_range=70,
                 )
 
                 # 판정선 근처 노트 입력
@@ -614,22 +640,38 @@ class RhythmBotGUI:
                 self._log(f"오류: {e}")
                 time.sleep(0.1)
 
+    def _close_preview_window(self):
+        if self._preview_win is not None:
+            try:
+                self._preview_win.destroy()
+            except Exception:
+                pass
+            self._preview_win = None
+            self._preview_canvas = None
+
     # ═══════════ 미리보기 ═══════════
 
     def _update_preview(self):
         if not self._running:
             return
         try:
-            debug_frame = self.detector.debug_frame
-            if debug_frame is not None and Image is not None:
-                pw = self.preview_label.winfo_width()
-                ph = self.preview_label.winfo_height()
-                if pw > 10 and ph > 10:
-                    rgb = cv2.cvtColor(debug_frame, cv2.COLOR_BGR2RGB)
-                    img = Image.fromarray(rgb).resize((pw, ph), Image.Resampling.NEAREST)
-                    photo = ImageTk.PhotoImage(img)
-                    self.preview_label.config(image=photo, text="")
-                    self.preview_label._photo = photo
+            # 미리보기 창이 열려있을 때만 업데이트
+            if self._preview_win is not None and self._preview_canvas is not None:
+                debug_frame = self.detector.debug_frame
+                if debug_frame is not None and Image is not None:
+                    try:
+                        pw = self._preview_canvas.winfo_width()
+                        ph = self._preview_canvas.winfo_height()
+                    except tk.TclError:
+                        self._preview_win = None
+                        self._preview_canvas = None
+                        pw, ph = 0, 0
+                    if pw > 10 and ph > 10:
+                        rgb = cv2.cvtColor(debug_frame, cv2.COLOR_BGR2RGB)
+                        img = Image.fromarray(rgb).resize((pw, ph), Image.Resampling.NEAREST)
+                        photo = ImageTk.PhotoImage(img)
+                        self._preview_canvas.config(image=photo, text="")
+                        self._preview_photo = photo  # 참조 유지
         except Exception:
             pass
 
@@ -715,6 +757,7 @@ class RhythmBotGUI:
     def _on_close(self):
         self._stop_bot()
         self._save_config()
+        self._close_preview_window()
         try:
             self.root.destroy()
         except Exception:
