@@ -538,7 +538,7 @@ class RhythmBotGUI:
             keys = [k.strip() for k in self.var_keys.get().split(",")]
             self.input_mgr.configure(
                 key_bindings=keys,
-                debounce_ms=15,
+                debounce_ms=10,
                 input_delay_ms=self.var_delay.get(),
             )
             self.input_mgr.start()
@@ -695,10 +695,11 @@ class RhythmBotGUI:
             self.lbl_status.config(text=f"상태: {self._status}")
             self.lbl_fps.config(text=f"FPS: {self._fps_display:.0f}")
             self.lbl_notes.config(text=f"노트: {self._note_count}")
+            pc = self.input_mgr.press_count
             active = self.input_mgr.active_lanes
             keys = self.input_mgr.key_bindings
             key_str = ", ".join(keys[i] if i < len(keys) else "?" for i in active) if active else "-"
-            self.lbl_keys.config(text=f"키: {key_str}")
+            self.lbl_keys.config(text=f"입력: {pc} | 키: {key_str}")
         except Exception:
             pass
 

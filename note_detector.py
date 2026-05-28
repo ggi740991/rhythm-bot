@@ -58,6 +58,7 @@ class NoteDetector:
         judge_line_y: int = 0,
         note_capture_regions: Optional[List[dict]] = None,
         rail_capture_regions: Optional[List[dict]] = None,
+        ignore_below_judge: bool = True,
     ) -> List[DetectedNote]:
         """
         프레임에서 노트를 감지
@@ -101,12 +102,18 @@ class NoteDetector:
         for contour in contours:
             bx, by, bw, bh = cv2.boundingRect(contour)
 
-            # 최소 크기 필터 (너비만 체크 - 롱노트는 높이가 클 수 있음)
+            # 최소 크기 필터
             if bw < min_note_size:
                 continue
-            # 너무 작은 잡음 제거
             if bh < 3:
                 continue
+
+            # 판정선 아래에 있는 노트는 무시 (콤보/이펙트 필터)
+            note_bottom = by + bh
+            if ignore_below_judge and judge_line_y > 0:
+                # 노트 전체가 판정선 아래면 무시 (콤보, 이펙트 등)
+                if by > judge_line_y + 10:
+                    continue
 
             # 노트의 x 중심으로 레인 결정
             note_center_x = bx + bw / 2
@@ -133,6 +140,12 @@ class NoteDetector:
                 center_y=center_y,
             )
             notes.append(note)
+
+        # 판정선 아래 영역 어둡게 표시 (필터링된 영역 시각화)
+        if judge_line_y > 0:
+            overlay = debug_frame.copy()
+            cv2.rectangle(overlay, (0, judge_line_y + 10), (w, h), (0, 0, 0), -1)
+            cv2.addWeighted(overlay, 0.4, debug_frame, 0.6, 0, debug_frame)
 
         # 디버그 프레임 그리기
         # 레인 구분선

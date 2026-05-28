@@ -85,15 +85,15 @@ class InputManager:
     """동시 키 입력을 지원하는 입력 관리자"""
 
     def __init__(self):
-        # 레인별 상태 (lock-free 접근용 - 레인별 독립)
         self._key_bindings: List[str] = []
         self._last_press_time: Dict[int, float] = {}
         self._key_held: Dict[int, bool] = {}
-        self._debounce_sec: float = 0.015
+        self._debounce_sec: float = 0.010
         self._input_delay_sec: float = 0.0
         self._active_lanes: Set[int] = set()
         self._running = False
         self._lock = threading.Lock()
+        self._press_count = 0  # 디버그용 입력 횟수
 
     def configure(self, key_bindings: List[str], debounce_ms: int = 15,
                   input_delay_ms: int = 0) -> None:
@@ -235,10 +235,12 @@ class InputManager:
             for lane in lanes:
                 self.release_lane(lane)
 
-    # ─── 내부 키 입력 (Linux/Mac) ───
+    # ─── 내부 키 입력 ───
 
     def _do_tap(self, key: str) -> None:
+        """key 누르고 바로 떼기 (빠른 탭)"""
         try:
+            self._press_count += 1
             if _IS_WINDOWS:
                 vk = VK_MAP.get(key.lower(), 0)
                 if vk:
@@ -247,14 +249,18 @@ class InputManager:
                         _make_key_input(vk, KEYEVENTF_KEYUP),
                     )
             elif _keyboard is not None:
-                _keyboard.press_and_release(key)
+                # press + release가 press_and_release보다 빠름
+                _keyboard.press(key)
+                _keyboard.release(key)
             elif pyautogui is not None:
                 pyautogui.press(key)
         except Exception:
             pass
 
     def _do_press(self, key: str) -> None:
+        """key 누르기 (유지)"""
         try:
+            self._press_count += 1
             if _IS_WINDOWS:
                 vk = VK_MAP.get(key.lower(), 0)
                 if vk:
@@ -267,6 +273,7 @@ class InputManager:
             pass
 
     def _do_release(self, key: str) -> None:
+        """key 해제"""
         try:
             if _IS_WINDOWS:
                 vk = VK_MAP.get(key.lower(), 0)
@@ -286,3 +293,7 @@ class InputManager:
     @property
     def key_bindings(self) -> List[str]:
         return list(self._key_bindings)
+
+    @property
+    def press_count(self) -> int:
+        return self._press_count
