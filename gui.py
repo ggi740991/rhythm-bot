@@ -822,29 +822,26 @@ class RhythmBotGUI:
                         f"judge={judge_y} | 입력:{self.input_mgr.press_count}"
                     )
 
-                # 판정 범위를 넓게 설정
-                judge_notes = self.detector.get_notes_near_judge(
-                    notes=notes,
-                    judge_line_y=judge_y,
-                    perfect_range=30,
-                    great_range=60,
-                    good_range=100,
-                )
+                # 판정: 노트 하단이 판정선 영역에 있으면 입력
+                # 판정 영역 = judge_y 위아래로 프레임 높이의 20%
+                judge_zone = int(h * 0.20)
 
-                # 판정선 근처 노트 수
-                judge_total = sum(len(v) for v in judge_notes.values())
-                if do_log and judge_total > 0:
-                    self._log(f"판정선 근처: P={len(judge_notes['perfect'])} G={len(judge_notes['great'])} OK={len(judge_notes['good'])}")
-
-                # 판정선 근처 노트 → 동시 입력 (배치)
                 normal_lanes = set()
                 long_lanes = set()
-                for grade in ["perfect", "great", "good"]:
-                    for note in judge_notes[grade]:
+                for note in notes:
+                    # 노트가 판정 영역에 있는지: 바운딩 박스가 judge_y 근처를 걸치는지
+                    zone_top = judge_y - judge_zone
+                    zone_bottom = judge_y + judge_zone
+                    # 노트의 어떤 부분이라도 판정 영역에 있으면 OK
+                    if note.bottom >= zone_top and note.top <= zone_bottom:
                         if note.is_long:
                             long_lanes.add(note.lane)
                         else:
                             normal_lanes.add(note.lane)
+
+                if do_log:
+                    zone_notes = len(normal_lanes) + len(long_lanes)
+                    self._log(f"판정영역({judge_y-judge_zone}~{judge_y+judge_zone}): {zone_notes}개 레인")
 
                 # 동시에 모든 키 입력
                 all_press = normal_lanes | long_lanes
@@ -855,7 +852,7 @@ class RhythmBotGUI:
 
                 # 롱노트 해제: 판정선에 롱노트가 없는 레인만 해제
                 long_hold_lanes = self.detector.get_lanes_with_long_notes_at_judge(
-                    notes, judge_y, margin=15
+                    notes, judge_y, margin=judge_zone
                 )
                 release_lanes = set()
                 for lane in range(lane_count):

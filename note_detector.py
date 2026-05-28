@@ -223,13 +223,14 @@ class NoteDetector:
         self,
         notes: List[DetectedNote],
         judge_line_y: int,
-        perfect_range: int,
-        great_range: int,
-        good_range: int,
+        perfect_range: int = 30,
+        great_range: int = 60,
+        good_range: int = 100,
     ) -> Dict[str, List[DetectedNote]]:
         """
         판정선 근처 노트를 등급별로 분류
-        롱노트는 바운딩 박스가 판정선을 걸치면 바로 판정
+        노트의 바운딩 박스가 판정선 근처에 있으면 판정
+        (center_y가 아닌 바운딩 박스 기준으로 판정 - 노트가 빠르게 지나가도 잡힘)
         """
         result: Dict[str, List[DetectedNote]] = {
             "perfect": [],
@@ -238,18 +239,15 @@ class NoteDetector:
         }
 
         for note in notes:
-            if note.is_long:
-                # 롱노트: 바운딩 박스가 판정선을 걸치면 perfect
-                if note.crosses_line(judge_line_y, margin=good_range):
+            # 노트의 바운딩 박스가 판정선 영역과 겹치는지 확인
+            # 판정선 위아래로 range만큼의 영역
+            if note.crosses_line(judge_line_y, margin=good_range):
+                # 더 정밀한 등급 분류
+                if note.crosses_line(judge_line_y, margin=perfect_range):
                     result["perfect"].append(note)
-            else:
-                # 일반 노트: center_y 기준 거리
-                distance = abs(note.center_y - judge_line_y)
-                if distance <= perfect_range:
-                    result["perfect"].append(note)
-                elif distance <= great_range:
+                elif note.crosses_line(judge_line_y, margin=great_range):
                     result["great"].append(note)
-                elif distance <= good_range:
+                else:
                     result["good"].append(note)
 
         return result
