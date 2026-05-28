@@ -590,18 +590,22 @@ class RhythmBotGUI:
                     good_range=40,
                 )
 
+                # 판정선 근처 노트 입력
                 pressed = set()
                 for grade in ["perfect", "great", "good"]:
                     for note in judge_notes[grade]:
                         if note.lane not in pressed:
-                            is_long = note.h > 30
-                            self.input_mgr.press_lane(note.lane, is_long_note=is_long)
+                            self.input_mgr.press_lane(
+                                note.lane, is_long_note=note.is_long
+                            )
                             pressed.add(note.lane)
 
-                # 롱노트 해제
-                active_lanes = set(n.lane for n in notes if n.center_y >= judge_y - 40)
+                # 롱노트 해제: 판정선을 걸치는 롱노트가 없는 레인만 해제
+                long_hold_lanes = self.detector.get_lanes_with_long_notes_at_judge(
+                    notes, judge_y, margin=15
+                )
                 for lane in range(self.var_lane_count.get()):
-                    if lane not in active_lanes and lane not in pressed:
+                    if lane not in long_hold_lanes and lane not in pressed:
                         self.input_mgr.release_lane(lane)
 
                 time.sleep(0.001)
