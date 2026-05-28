@@ -324,6 +324,15 @@ class RhythmBotGUI:
                             command=lambda: self.root.attributes("-topmost", self.var_always_top.get()))
         cb.pack(side=tk.LEFT, padx=5)
 
+        # 테스트 입력 버튼
+        btn_row3 = tk.Frame(f, bg=BG)
+        btn_row3.pack(fill=tk.X, pady=3)
+        tk.Button(btn_row3, text="⌨ 키 입력 테스트 (3초 후 d,f,j,k 자동 입력)",
+                  bg="#FF6F00", fg="white", activebackground="#E65100",
+                  command=self._test_key_input).pack(fill=tk.X)
+        self.lbl_test = tk.Label(f, text="", bg=BG, fg="#999999", font=("", 9))
+        self.lbl_test.pack(anchor="w")
+
     # ─── 상태바 ───
 
     def _build_status_bar(self):
@@ -678,6 +687,33 @@ class RhythmBotGUI:
         self._log("긴급 종료! (ESC)")
         self._update_status()
 
+    def _test_key_input(self):
+        """키 입력 테스트 - 3초 후 각 키를 한 번씩 누름"""
+        self._log("키 입력 테스트: 3초 후 입력됩니다. 메모장이나 게임을 클릭해서 포커스를 주세요!")
+        self.lbl_test.config(text="3초 후 입력됩니다... 메모장/게임을 클릭하세요!", fg=WARN)
+
+        def do_test():
+            time.sleep(3)
+            keys = [k.strip() for k in self.var_keys.get().split(",")]
+            results = []
+            for key in keys:
+                try:
+                    import keyboard as _kb
+                    _kb.press(key)
+                    time.sleep(0.05)
+                    _kb.release(key)
+                    results.append(f"{key}=OK")
+                except Exception as e:
+                    results.append(f"{key}=실패({e})")
+                time.sleep(0.2)
+            result_str = ", ".join(results)
+            self.root.after(0, lambda: self.lbl_test.config(
+                text=f"테스트 결과: {result_str}", fg=SUCCESS
+            ))
+            self.root.after(0, lambda: self._log(f"키 테스트: {result_str}"))
+
+        threading.Thread(target=do_test, daemon=True).start()
+
     # ═══════════ 봇 루프 ═══════════
 
     def _bot_loop(self):
@@ -726,6 +762,15 @@ class RhythmBotGUI:
                 self._note_count = len(notes)
                 self._fps_display = self.capture.fps
 
+                # 디버그 로그 (매 1초마다)
+                if not hasattr(self, '_last_debug_log'):
+                    self._last_debug_log = 0
+                now = time.time()
+                if now - self._last_debug_log > 1.0:
+                    self._last_debug_log = now
+                    if notes:
+                        self._log(f"감지: {len(notes)}개 | judge_y={judge_y} | 노트Y: {[n.center_y for n in notes[:5]]}")
+
                 judge_notes = self.detector.get_notes_near_judge(
                     notes=notes,
                     judge_line_y=judge_y,
@@ -747,9 +792,15 @@ class RhythmBotGUI:
                 # 동시에 모든 키 입력
                 all_press = normal_lanes | long_lanes
                 if all_press:
+                    before_count = self.input_mgr.press_count
                     self.input_mgr.press_lanes_batch(
                         normal_lanes - long_lanes, long_lanes
                     )
+                    after_count = self.input_mgr.press_count
+                    if after_count > before_count and now - self._last_debug_log < 0.1:
+                        keys = self.input_mgr.key_bindings
+                        pressed_keys = [keys[i] for i in all_press if i < len(keys)]
+                        self._log(f"입력! 레인 {all_press} → 키 {pressed_keys}")
 
                 # 롱노트 해제: 판정선에 롱노트가 없는 레인만 해제
                 long_hold_lanes = self.detector.get_lanes_with_long_notes_at_judge(
