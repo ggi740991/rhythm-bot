@@ -93,6 +93,7 @@ class RhythmBotGUI:
         self.var_keys = tk.StringVar(value=",".join(cfg.get("key_bindings", ["d", "f", "j", "k"])))
         self.var_judge_ratio = tk.DoubleVar(value=cfg.get("judge_line_ratio", 0.85))
         self.var_delay = tk.IntVar(value=cfg.get("input_delay_ms", 0))
+        self.var_offset_px = tk.IntVar(value=cfg.get("input_offset_px", 0))
         self.var_tolerance = tk.IntVar(value=25)
         self.var_always_top = tk.BooleanVar(value=cfg.get("always_on_top", False))
 
@@ -275,14 +276,15 @@ class RhythmBotGUI:
                  bg=BG, fg=FG, troughcolor=ENTRY_BG,
                  activebackground=ACCENT).pack(side=tk.LEFT, fill=tk.X, expand=True)
 
-        # 입력 딜레이
+        # 입력 오프셋
         row2 = tk.Frame(f, bg=BG)
         row2.pack(fill=tk.X, pady=3)
-        tk.Label(row2, text="입력 딜레이(ms):", bg=BG, fg=FG).pack(side=tk.LEFT)
-        tk.Spinbox(row2, from_=0, to=500, textvariable=self.var_delay,
-                   width=5, bg=ENTRY_BG, fg=FG, insertbackground=FG
-                   ).pack(side=tk.LEFT, padx=5)
-        tk.Label(row2, text="(보통 0으로 두세요)", bg=BG,
+        tk.Label(row2, text="입력 오프셋(px):", bg=BG, fg=FG).pack(side=tk.LEFT)
+        tk.Scale(row2, variable=self.var_offset_px, from_=-80, to=80,
+                 resolution=5, orient=tk.HORIZONTAL, length=250,
+                 bg=BG, fg=FG, troughcolor=ENTRY_BG,
+                 activebackground=ACCENT).pack(side=tk.LEFT, fill=tk.X, expand=True)
+        tk.Label(row2, text="(-: 빨리 / +: 늦게)", bg=BG,
                  fg="#888888", font=("", 9)).pack(side=tk.LEFT)
 
     # ─── STEP 5: 시작/정지 ───
@@ -776,38 +778,45 @@ class RhythmBotGUI:
     # ═══════════ 봇 루프 ═══════════
 
     def _bot_loop(self):
+        # ── 시작 시 설정값 캐싱 (매 프레임 tkinter 접근 방지) ──
+        region = {
+            "x": self.var_cap_x.get(),
+            "y": self.var_cap_y.get(),
+            "width": self.var_cap_w.get(),
+            "height": self.var_cap_h.get(),
+        }
+        lane_count = self.var_lane_count.get()
+        hsv_lower = [self.var_h_low.get(), self.var_s_low.get(), self.var_v_low.get()]
+        hsv_upper = [self.var_h_high.get(), self.var_s_high.get(), self.var_v_high.get()]
+        judge_ratio = self.var_judge_ratio.get()
+        offset_px = self.var_offset_px.get()
+
+        exc_w = self.var_exc_w.get()
+        exc_h = self.var_exc_h.get()
+        exclude_rect = None
+        if exc_w > 0 and exc_h > 0:
+            exclude_rect = {
+                "x": self.var_exc_x.get(),
+                "y": self.var_exc_y.get(),
+                "width": exc_w,
+                "height": exc_h,
+            }
+
+        last_log_time = 0.0
+        frame_count = 0
+        preview_open = self._preview_win is not None
+
         while self._running and not self._stop_event.is_set():
             try:
-                region = {
-                    "x": self.var_cap_x.get(),
-                    "y": self.var_cap_y.get(),
-                    "width": self.var_cap_w.get(),
-                    "height": self.var_cap_h.get(),
-                }
                 frame = self.capture.capture(region)
                 if frame is None or frame.size == 0:
-                    time.sleep(0.01)
                     continue
 
                 h, w = frame.shape[:2]
-                judge_y = int(h * self.var_judge_ratio.get())
+                judge_y = int(h * judge_ratio) + offset_px
 
-                lane_count = self.var_lane_count.get()
-                hsv_lower = [self.var_h_low.get(), self.var_s_low.get(), self.var_v_low.get()]
-                hsv_upper = [self.var_h_high.get(), self.var_s_high.get(), self.var_v_high.get()]
-
-                # 콤보 제외 영역
-                exc_w = self.var_exc_w.get()
-                exc_h = self.var_exc_h.get()
-                exclude_rect = None
-                if exc_w > 0 and exc_h > 0:
-                    exclude_rect = {
-                        "x": self.var_exc_x.get(),
-                        "y": self.var_exc_y.get(),
-                        "width": exc_w,
-                        "height": exc_h,
-                    }
-
+                # 노트 감지 (디버그 프레임은 미리보기 열려있을 때만)
+                build_debug = preview_open and frame_count % 3 == 0
                 notes = self.detector.detect(
                     frame=frame,
                     lane_count=lane_count,
@@ -816,66 +825,60 @@ class RhythmBotGUI:
                     min_note_size=10,
                     judge_line_y=judge_y,
                     exclude_rect=exclude_rect,
+                    build_debug=build_debug,
                 )
 
                 self._note_count = len(notes)
                 self._fps_display = self.capture.fps
+                frame_count += 1
 
-                # 디버그 로그 (매 2초마다)
-                if not hasattr(self, '_last_debug_log'):
-                    self._last_debug_log = 0
+                # 디버그 로그 (3초마다)
                 now = time.time()
-                do_log = now - self._last_debug_log > 2.0
-                if do_log:
-                    self._last_debug_log = now
-                    note_info = [(n.lane, n.center_y, "L" if n.is_long else "") for n in notes[:6]]
+                if now - last_log_time > 3.0:
+                    last_log_time = now
+                    preview_open = self._preview_win is not None
                     self._log(
-                        f"노트:{len(notes)}개 {note_info} | "
-                        f"judge={judge_y} | 입력:{self.input_mgr.press_count}"
+                        f"노트:{len(notes)}개 | judge={judge_y} | "
+                        f"FPS:{self.capture.fps:.0f} | 입력:{self.input_mgr.press_count}"
                     )
 
-                # ─── 판정: 노트의 하단이 판정선 근처에 도달하면 입력 ───
-                # 판정 범위: 판정선 위 50px ~ 아래 15px (좁고 정확하게)
-                hit_top = judge_y - 50
-                hit_bottom = judge_y + 15
+                # ─── 판정: 노트가 판정선에 도달하면 입력 ───
+                # 판정선 위 35px ~ 아래 10px (정확한 타이밍)
+                hit_top = judge_y - 35
+                hit_bottom = judge_y + 10
 
                 normal_lanes = set()
                 long_lanes = set()
                 for note in notes:
-                    # 노트의 하단(bottom)이 판정 범위에 들어왔는지 확인
                     if note.bottom >= hit_top and note.top <= hit_bottom:
                         if note.is_long:
                             long_lanes.add(note.lane)
                         else:
                             normal_lanes.add(note.lane)
 
-                # 동시에 모든 키 입력
+                # 키 입력
                 all_press = normal_lanes | long_lanes
                 if all_press:
                     self.input_mgr.press_lanes_batch(
                         normal_lanes - long_lanes, long_lanes
                     )
 
-                # ─── 롱노트 해제 ───
-                # 판정선 근처에 롱노트 바운딩 박스가 걸쳐있으면 유지
-                # 아니면 해제
-                long_hold_lanes = set()
+                # 롱노트 해제
+                long_hold = set()
                 for note in notes:
-                    if note.is_long and note.bottom >= hit_top and note.top <= judge_y + 30:
-                        long_hold_lanes.add(note.lane)
+                    if note.is_long and note.bottom >= hit_top and note.top <= judge_y + 20:
+                        long_hold.add(note.lane)
 
-                release_lanes = set()
+                release = set()
                 for lane in range(lane_count):
-                    if lane not in long_hold_lanes and lane not in all_press:
-                        release_lanes.add(lane)
-                if release_lanes:
-                    self.input_mgr.release_lanes_batch(release_lanes)
-
-                time.sleep(0.001)
+                    if lane not in long_hold and lane not in all_press:
+                        release.add(lane)
+                if release:
+                    self.input_mgr.release_lanes_batch(release)
 
             except Exception as e:
                 self._log(f"오류: {e}")
-                time.sleep(0.1)
+                time.sleep(0.05)
 
     def _close_preview_window(self):
         if self._preview_win is not None:
@@ -940,6 +943,7 @@ class RhythmBotGUI:
         self.config.set("key_bindings", [k.strip() for k in self.var_keys.get().split(",")])
         self.config.set("judge_line_ratio", self.var_judge_ratio.get())
         self.config.set("input_delay_ms", self.var_delay.get())
+        self.config.set("input_offset_px", self.var_offset_px.get())
         self.config.set("hsv_lower", [self.var_h_low.get(), self.var_s_low.get(), self.var_v_low.get()])
         self.config.set("hsv_upper", [self.var_h_high.get(), self.var_s_high.get(), self.var_v_high.get()])
         self.config.set("always_on_top", self.var_always_top.get())
