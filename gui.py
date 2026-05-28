@@ -642,6 +642,19 @@ class RhythmBotGUI:
 
         try:
             self._gui_to_config()
+            self.btn_start.config(state=tk.DISABLED)
+            self._status = "준비 중..."
+            self._log("3초 후 시작합니다 - 게임 창을 클릭하세요!")
+            self._update_status()
+            self.root.update()
+
+            # 카운트다운 (게임에 포커스 줄 시간)
+            for i in range(3, 0, -1):
+                self._status = f"{i}초 후 시작..."
+                self._update_status()
+                self.root.update()
+                time.sleep(1)
+
             self._running = True
             self._stop_event.clear()
             self._status = "실행 중"
@@ -651,7 +664,7 @@ class RhythmBotGUI:
             keys = [k.strip() for k in self.var_keys.get().split(",")]
             self.input_mgr.configure(
                 key_bindings=keys,
-                debounce_ms=10,
+                debounce_ms=8,
                 input_delay_ms=self.var_delay.get(),
             )
             self.input_mgr.start()
@@ -661,9 +674,8 @@ class RhythmBotGUI:
 
             self._update_preview()
 
-            self.btn_start.config(state=tk.DISABLED)
             self.btn_stop.config(state=tk.NORMAL)
-            self._log("봇 시작!")
+            self._log("봇 시작! 게임 창에 포커스가 있는지 확인하세요.")
             self._update_status()
 
         except Exception as e:
