@@ -133,6 +133,7 @@ class InputManager:
         if _IS_WINDOWS:
             # Windows: SendInput으로 모든 키를 한 번에 전송
             inputs = []
+            pressed_count = 0
             for lane in lanes | long_lanes:
                 if lane >= len(self._key_bindings):
                     continue
@@ -151,19 +152,19 @@ class InputManager:
                     continue
 
                 if lane in long_lanes:
-                    # 롱노트: 누르기만
                     inputs.append(_make_key_input(vk, 0))
                     self._key_held[lane] = True
                 else:
-                    # 일반 노트: 누르기 + 떼기
                     inputs.append(_make_key_input(vk, 0))
                     inputs.append(_make_key_input(vk, KEYEVENTF_KEYUP))
 
                 self._last_press_time[lane] = current_time
                 self._active_lanes.add(lane)
+                pressed_count += 1
 
             if inputs:
                 _send_input(*inputs)
+                self._press_count += pressed_count
         else:
             # Linux/Mac: 개별 처리 (가능한 빠르게)
             for lane in lanes | long_lanes:

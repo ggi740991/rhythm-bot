@@ -688,29 +688,76 @@ class RhythmBotGUI:
         self._update_status()
 
     def _test_key_input(self):
-        """키 입력 테스트 - 3초 후 각 키를 한 번씩 누름"""
-        self._log("키 입력 테스트: 3초 후 입력됩니다. 메모장이나 게임을 클릭해서 포커스를 주세요!")
-        self.lbl_test.config(text="3초 후 입력됩니다... 메모장/게임을 클릭하세요!", fg=WARN)
+        """키 입력 테스트 - 3초 후 각 키를 여러 방법으로 시도"""
+        self._log("키 입력 테스트: 3초 후 입력됩니다. 메모장을 열고 클릭해서 포커스를 주세요!")
+        self.lbl_test.config(text="3초 후 입력됩니다... 메모장을 클릭하세요!", fg=WARN)
 
         def do_test():
+            import platform
+            is_win = platform.system() == "Windows"
             time.sleep(3)
             keys = [k.strip() for k in self.var_keys.get().split(",")]
             results = []
+
             for key in keys:
-                try:
-                    import keyboard as _kb
-                    _kb.press(key)
-                    time.sleep(0.05)
-                    _kb.release(key)
-                    results.append(f"{key}=OK")
-                except Exception as e:
-                    results.append(f"{key}=실패({e})")
-                time.sleep(0.2)
-            result_str = ", ".join(results)
+                ok = False
+
+                # 방법 1: keyboard 라이브러리
+                if not ok:
+                    try:
+                        import keyboard as _kb
+                        _kb.press(key)
+                        time.sleep(0.05)
+                        _kb.release(key)
+                        results.append(f"{key}=keyboard OK")
+                        ok = True
+                    except Exception as e:
+                        results.append(f"{key}=keyboard 실패({e})")
+
+                # 방법 2: Windows ctypes SendInput
+                if not ok and is_win:
+                    try:
+                        import ctypes
+                        from ctypes import wintypes
+                        user32 = ctypes.WinDLL("user32")
+                        vk_map = {
+                            "a":0x41,"b":0x42,"c":0x43,"d":0x44,"e":0x45,
+                            "f":0x46,"g":0x47,"h":0x48,"i":0x49,"j":0x4A,
+                            "k":0x4B,"l":0x4C,"m":0x4D,"n":0x4E,"o":0x4F,
+                            "p":0x50,"q":0x51,"r":0x52,"s":0x53,"t":0x54,
+                            "u":0x55,"v":0x56,"w":0x57,"x":0x58,"y":0x59,"z":0x5A,
+                        }
+                        vk = vk_map.get(key.lower(), 0)
+                        if vk:
+                            user32.keybd_event(vk, 0, 0, 0)
+                            time.sleep(0.05)
+                            user32.keybd_event(vk, 0, 2, 0)
+                            results.append(f"{key}=ctypes OK")
+                            ok = True
+                    except Exception as e:
+                        results.append(f"{key}=ctypes 실패({e})")
+
+                # 방법 3: pyautogui
+                if not ok:
+                    try:
+                        import pyautogui
+                        pyautogui.FAILSAFE = False
+                        pyautogui.PAUSE = 0
+                        pyautogui.press(key)
+                        results.append(f"{key}=pyautogui OK")
+                        ok = True
+                    except Exception as e:
+                        results.append(f"{key}=pyautogui 실패({e})")
+
+                time.sleep(0.15)
+
+            result_str = " | ".join(results)
             self.root.after(0, lambda: self.lbl_test.config(
-                text=f"테스트 결과: {result_str}", fg=SUCCESS
+                text=f"결과: {result_str}", fg=SUCCESS if "OK" in result_str else ERROR
             ))
             self.root.after(0, lambda: self._log(f"키 테스트: {result_str}"))
+            if "실패" in result_str and is_win:
+                self.root.after(0, lambda: self._log("→ 관리자 권한으로 실행해보세요! (우클릭→관리자 권한으로 실행)"))
 
         threading.Thread(target=do_test, daemon=True).start()
 
@@ -762,22 +809,32 @@ class RhythmBotGUI:
                 self._note_count = len(notes)
                 self._fps_display = self.capture.fps
 
-                # 디버그 로그 (매 1초마다)
+                # 디버그 로그 (매 2초마다)
                 if not hasattr(self, '_last_debug_log'):
                     self._last_debug_log = 0
                 now = time.time()
-                if now - self._last_debug_log > 1.0:
+                do_log = now - self._last_debug_log > 2.0
+                if do_log:
                     self._last_debug_log = now
-                    if notes:
-                        self._log(f"감지: {len(notes)}개 | judge_y={judge_y} | 노트Y: {[n.center_y for n in notes[:5]]}")
+                    note_ys = [n.center_y for n in notes[:8]]
+                    self._log(
+                        f"노트:{len(notes)}개 Y:{note_ys} | "
+                        f"judge={judge_y} | 입력:{self.input_mgr.press_count}"
+                    )
 
+                # 판정 범위를 넓게 설정
                 judge_notes = self.detector.get_notes_near_judge(
                     notes=notes,
                     judge_line_y=judge_y,
-                    perfect_range=20,
-                    great_range=45,
-                    good_range=70,
+                    perfect_range=30,
+                    great_range=60,
+                    good_range=100,
                 )
+
+                # 판정선 근처 노트 수
+                judge_total = sum(len(v) for v in judge_notes.values())
+                if do_log and judge_total > 0:
+                    self._log(f"판정선 근처: P={len(judge_notes['perfect'])} G={len(judge_notes['great'])} OK={len(judge_notes['good'])}")
 
                 # 판정선 근처 노트 → 동시 입력 (배치)
                 normal_lanes = set()
@@ -792,15 +849,9 @@ class RhythmBotGUI:
                 # 동시에 모든 키 입력
                 all_press = normal_lanes | long_lanes
                 if all_press:
-                    before_count = self.input_mgr.press_count
                     self.input_mgr.press_lanes_batch(
                         normal_lanes - long_lanes, long_lanes
                     )
-                    after_count = self.input_mgr.press_count
-                    if after_count > before_count and now - self._last_debug_log < 0.1:
-                        keys = self.input_mgr.key_bindings
-                        pressed_keys = [keys[i] for i in all_press if i < len(keys)]
-                        self._log(f"입력! 레인 {all_press} → 키 {pressed_keys}")
 
                 # 롱노트 해제: 판정선에 롱노트가 없는 레인만 해제
                 long_hold_lanes = self.detector.get_lanes_with_long_notes_at_judge(
