@@ -96,6 +96,13 @@ class RhythmBotGUI:
         self.var_tolerance = tk.IntVar(value=25)
         self.var_always_top = tk.BooleanVar(value=cfg.get("always_on_top", False))
 
+        # 콤보 제외 영역 (캐피 영역 기준 상대 좌표)
+        exc = cfg.get("exclude_region", {})
+        self.var_exc_x = tk.IntVar(value=exc.get("x", 0))
+        self.var_exc_y = tk.IntVar(value=exc.get("y", 0))
+        self.var_exc_w = tk.IntVar(value=exc.get("width", 0))
+        self.var_exc_h = tk.IntVar(value=exc.get("height", 0))
+
         hsv_l = cfg.get("hsv_lower", [0, 0, 200])
         hsv_u = cfg.get("hsv_upper", [180, 50, 255])
         self.var_h_low = tk.IntVar(value=hsv_l[0])
@@ -208,6 +215,27 @@ class RhythmBotGUI:
                  ).pack(side=tk.LEFT, fill=tk.X, expand=True)
         tk.Label(tol_row, text="(작을수록 정밀, 클수록 넓게 인식)", bg=BG,
                  fg="#888888", font=("", 9)).pack(side=tk.LEFT)
+
+        # 콤보 제외 영역 버튼
+        exc_frame = tk.Frame(f, bg=BG)
+        exc_frame.pack(fill=tk.X, pady=5)
+
+        self.btn_exclude = tk.Button(
+            exc_frame, text="🚫 콤보 영역 설정 (선택사항)", font=("", 10),
+            bg="#E65100", fg="white", activebackground="#BF360C",
+            command=self._select_exclude_region
+        )
+        self.btn_exclude.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        self.btn_exc_clear = tk.Button(
+            exc_frame, text="❌ 해제", font=("", 10),
+            bg=BTN_BG, fg=FG, activebackground=BTN_ACTIVE,
+            command=self._clear_exclude_region
+        )
+        self.btn_exc_clear.pack(side=tk.LEFT, padx=(5, 0))
+
+        self.lbl_exclude = tk.Label(f, text="콤보 제외: 미설정", bg=BG, fg="#999999", font=("", 9))
+        self.lbl_exclude.pack(anchor="w")
 
     # ─── STEP 3: 키 설정 ───
 
@@ -510,6 +538,82 @@ class RhythmBotGUI:
         canvas.bind("<ButtonRelease-1>", on_release)
         selector.bind("<Escape>", lambda e: selector.destroy())
 
+    def _select_exclude_region(self):
+        """콤보 제외 영역 선택 - 캐피 영역 내에서 드래그"""
+        cap_x = self.var_cap_x.get()
+        cap_y = self.var_cap_y.get()
+        cap_w = self.var_cap_w.get()
+        cap_h = self.var_cap_h.get()
+
+        if cap_w < 20 or cap_h < 20:
+            messagebox.showwarning("알림", "먼저 STEP 1에서 캐피 영역을 선택하세요!")
+            return
+
+        # 캐피 영역만 캐피하여 표시
+        sct = mss.mss()
+        monitor = {"top": cap_y, "left": cap_x, "width": cap_w, "height": cap_h}
+        screenshot = sct.grab(monitor)
+        img_array = np.array(screenshot, dtype=np.uint8)[:, :, :3]
+        sct.close()
+
+        img_rgb = cv2.cvtColor(img_array, cv2.COLOR_BGR2RGB)
+        pil_img = Image.fromarray(img_rgb)
+        photo = ImageTk.PhotoImage(pil_img)
+
+        selector = tk.Toplevel(self.root)
+        selector.title("콤보 영역 선택 - 콤보가 뜨는 곳을 드래그하세요")
+        selector.geometry(f"{cap_w}x{cap_h}")
+        selector.attributes("-topmost", True)
+
+        canvas = tk.Canvas(selector, highlightthickness=0)
+        canvas.pack(fill=tk.BOTH, expand=True)
+        canvas.create_image(0, 0, image=photo, anchor="nw")
+        canvas._photo = photo
+
+        start = {"x": 0, "y": 0}
+        rect_id = [None]
+
+        def on_press(event):
+            start["x"], start["y"] = event.x, event.y
+
+        def on_drag(event):
+            if rect_id[0]:
+                canvas.delete(rect_id[0])
+            rect_id[0] = canvas.create_rectangle(
+                start["x"], start["y"], event.x, event.y,
+                outline="orange", width=2, dash=(4, 4)
+            )
+
+        def on_release(event):
+            x1 = min(start["x"], event.x)
+            y1 = min(start["y"], event.y)
+            x2 = max(start["x"], event.x)
+            y2 = max(start["y"], event.y)
+            if x2 - x1 > 5 and y2 - y1 > 5:
+                self.var_exc_x.set(x1)
+                self.var_exc_y.set(y1)
+                self.var_exc_w.set(x2 - x1)
+                self.var_exc_h.set(y2 - y1)
+                self.lbl_exclude.config(
+                    text=f"콤보 제외: ({x1},{y1}) [{x2-x1}x{y2-y1}]",
+                    fg=WARN
+                )
+                self._log(f"콤보 제외 영역 설정: ({x1},{y1}) {x2-x1}x{y2-y1}")
+            selector.destroy()
+
+        canvas.bind("<ButtonPress-1>", on_press)
+        canvas.bind("<B1-Motion>", on_drag)
+        canvas.bind("<ButtonRelease-1>", on_release)
+        selector.bind("<Escape>", lambda e: selector.destroy())
+
+    def _clear_exclude_region(self):
+        self.var_exc_x.set(0)
+        self.var_exc_y.set(0)
+        self.var_exc_w.set(0)
+        self.var_exc_h.set(0)
+        self.lbl_exclude.config(text="콤보 제외: 미설정", fg="#999999")
+        self._log("콤보 제외 영역 해제")
+
     # ═══════════ 봇 제어 ═══════════
 
     def _start_bot(self):
@@ -597,6 +701,18 @@ class RhythmBotGUI:
                 hsv_lower = [self.var_h_low.get(), self.var_s_low.get(), self.var_v_low.get()]
                 hsv_upper = [self.var_h_high.get(), self.var_s_high.get(), self.var_v_high.get()]
 
+                # 콤보 제외 영역
+                exc_w = self.var_exc_w.get()
+                exc_h = self.var_exc_h.get()
+                exclude_rect = None
+                if exc_w > 0 and exc_h > 0:
+                    exclude_rect = {
+                        "x": self.var_exc_x.get(),
+                        "y": self.var_exc_y.get(),
+                        "width": exc_w,
+                        "height": exc_h,
+                    }
+
                 notes = self.detector.detect(
                     frame=frame,
                     lane_count=lane_count,
@@ -604,6 +720,7 @@ class RhythmBotGUI:
                     hsv_upper=hsv_upper,
                     min_note_size=10,
                     judge_line_y=judge_y,
+                    exclude_rect=exclude_rect,
                 )
 
                 self._note_count = len(notes)
@@ -717,6 +834,10 @@ class RhythmBotGUI:
         self.config.set("hsv_lower", [self.var_h_low.get(), self.var_s_low.get(), self.var_v_low.get()])
         self.config.set("hsv_upper", [self.var_h_high.get(), self.var_s_high.get(), self.var_v_high.get()])
         self.config.set("always_on_top", self.var_always_top.get())
+        self.config.set("exclude_region", {
+            "x": self.var_exc_x.get(), "y": self.var_exc_y.get(),
+            "width": self.var_exc_w.get(), "height": self.var_exc_h.get(),
+        })
 
     def _load_from_config(self):
         region = self.config.get("capture_region", {})
