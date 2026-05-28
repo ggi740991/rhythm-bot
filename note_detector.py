@@ -98,20 +98,27 @@ class NoteDetector:
             x_end = (i + 1) * lane_width
             lane_boundaries.append((x_start, x_end))
 
+        # 최소 노트 너비 = 레인 너비의 20%
+        min_note_w = max(min_note_size, int(lane_width * 0.20))
+
         # contour → 노트 변환, x 중심으로 레인 배정
         notes: List[DetectedNote] = []
         for contour in contours:
             bx, by, bw, bh = cv2.boundingRect(contour)
 
-            # 최소 크기 필터
-            if bw < min_note_size:
+            # 크기 필터: 너비가 레인 대비 너무 작으면 무시 (노이즈/텍스트)
+            if bw < min_note_w:
                 continue
-            if bh < 3:
+            if bh < 4:
+                continue
+
+            # 너무 넓은 것도 무시 (배경 요소, 전체 레인을 덮는 이펙트)
+            if bw > lane_width * 1.5:
                 continue
 
             # 판정선 아래에 있는 노트는 무시 (이펙트 필터)
             if ignore_below_judge and judge_line_y > 0:
-                if by > judge_line_y + 10:
+                if by > judge_line_y + 15:
                     continue
 
             # 콤보 제외 영역 안에 있는 노트 무시
@@ -196,8 +203,15 @@ class NoteDetector:
             cv2.putText(debug_frame, label, (note.x, note.y - 5),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.35, color, 1)
 
-        # 판정선
+        # 판정선 + 판정 영역 표시
         if judge_line_y > 0:
+            # 판정 영역 (반투명)
+            hit_top = judge_line_y - 50
+            hit_bottom = judge_line_y + 15
+            overlay2 = debug_frame.copy()
+            cv2.rectangle(overlay2, (0, hit_top), (w, hit_bottom), (0, 100, 255), -1)
+            cv2.addWeighted(overlay2, 0.2, debug_frame, 0.8, 0, debug_frame)
+            # 판정선
             cv2.line(debug_frame, (0, judge_line_y), (w, judge_line_y),
                      (0, 0, 255), 2)
             cv2.putText(debug_frame, "JUDGE", (5, judge_line_y - 5),

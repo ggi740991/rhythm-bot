@@ -828,32 +828,26 @@ class RhythmBotGUI:
                 do_log = now - self._last_debug_log > 2.0
                 if do_log:
                     self._last_debug_log = now
-                    note_ys = [n.center_y for n in notes[:8]]
+                    note_info = [(n.lane, n.center_y, "L" if n.is_long else "") for n in notes[:6]]
                     self._log(
-                        f"노트:{len(notes)}개 Y:{note_ys} | "
+                        f"노트:{len(notes)}개 {note_info} | "
                         f"judge={judge_y} | 입력:{self.input_mgr.press_count}"
                     )
 
-                # 판정: 노트 하단이 판정선 영역에 있으면 입력
-                # 판정 영역 = judge_y 위아래로 프레임 높이의 20%
-                judge_zone = int(h * 0.20)
+                # ─── 판정: 노트의 하단이 판정선 근처에 도달하면 입력 ───
+                # 판정 범위: 판정선 위 50px ~ 아래 15px (좁고 정확하게)
+                hit_top = judge_y - 50
+                hit_bottom = judge_y + 15
 
                 normal_lanes = set()
                 long_lanes = set()
                 for note in notes:
-                    # 노트가 판정 영역에 있는지: 바운딩 박스가 judge_y 근처를 걸치는지
-                    zone_top = judge_y - judge_zone
-                    zone_bottom = judge_y + judge_zone
-                    # 노트의 어떤 부분이라도 판정 영역에 있으면 OK
-                    if note.bottom >= zone_top and note.top <= zone_bottom:
+                    # 노트의 하단(bottom)이 판정 범위에 들어왔는지 확인
+                    if note.bottom >= hit_top and note.top <= hit_bottom:
                         if note.is_long:
                             long_lanes.add(note.lane)
                         else:
                             normal_lanes.add(note.lane)
-
-                if do_log:
-                    zone_notes = len(normal_lanes) + len(long_lanes)
-                    self._log(f"판정영역({judge_y-judge_zone}~{judge_y+judge_zone}): {zone_notes}개 레인")
 
                 # 동시에 모든 키 입력
                 all_press = normal_lanes | long_lanes
@@ -862,10 +856,14 @@ class RhythmBotGUI:
                         normal_lanes - long_lanes, long_lanes
                     )
 
-                # 롱노트 해제: 판정선에 롱노트가 없는 레인만 해제
-                long_hold_lanes = self.detector.get_lanes_with_long_notes_at_judge(
-                    notes, judge_y, margin=judge_zone
-                )
+                # ─── 롱노트 해제 ───
+                # 판정선 근처에 롱노트 바운딩 박스가 걸쳐있으면 유지
+                # 아니면 해제
+                long_hold_lanes = set()
+                for note in notes:
+                    if note.is_long and note.bottom >= hit_top and note.top <= judge_y + 30:
+                        long_hold_lanes.add(note.lane)
+
                 release_lanes = set()
                 for lane in range(lane_count):
                     if lane not in long_hold_lanes and lane not in all_press:
