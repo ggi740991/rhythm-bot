@@ -593,12 +593,13 @@ class RhythmBotGUI:
                 h, w = frame.shape[:2]
                 judge_y = int(h * self.var_judge_ratio.get())
 
+                lane_count = self.var_lane_count.get()
                 hsv_lower = [self.var_h_low.get(), self.var_s_low.get(), self.var_v_low.get()]
                 hsv_upper = [self.var_h_high.get(), self.var_s_high.get(), self.var_v_high.get()]
 
                 notes = self.detector.detect(
                     frame=frame,
-                    lane_count=self.var_lane_count.get(),
+                    lane_count=lane_count,
                     hsv_lower=hsv_lower,
                     hsv_upper=hsv_upper,
                     min_note_size=10,
@@ -616,23 +617,33 @@ class RhythmBotGUI:
                     good_range=70,
                 )
 
-                # 판정선 근처 노트 입력
-                pressed = set()
+                # 판정선 근처 노트 → 동시 입력 (배치)
+                normal_lanes = set()
+                long_lanes = set()
                 for grade in ["perfect", "great", "good"]:
                     for note in judge_notes[grade]:
-                        if note.lane not in pressed:
-                            self.input_mgr.press_lane(
-                                note.lane, is_long_note=note.is_long
-                            )
-                            pressed.add(note.lane)
+                        if note.is_long:
+                            long_lanes.add(note.lane)
+                        else:
+                            normal_lanes.add(note.lane)
 
-                # 롱노트 해제: 판정선을 걸치는 롱노트가 없는 레인만 해제
+                # 동시에 모든 키 입력
+                all_press = normal_lanes | long_lanes
+                if all_press:
+                    self.input_mgr.press_lanes_batch(
+                        normal_lanes - long_lanes, long_lanes
+                    )
+
+                # 롱노트 해제: 판정선에 롱노트가 없는 레인만 해제
                 long_hold_lanes = self.detector.get_lanes_with_long_notes_at_judge(
                     notes, judge_y, margin=15
                 )
-                for lane in range(self.var_lane_count.get()):
-                    if lane not in long_hold_lanes and lane not in pressed:
-                        self.input_mgr.release_lane(lane)
+                release_lanes = set()
+                for lane in range(lane_count):
+                    if lane not in long_hold_lanes and lane not in all_press:
+                        release_lanes.add(lane)
+                if release_lanes:
+                    self.input_mgr.release_lanes_batch(release_lanes)
 
                 time.sleep(0.001)
 
