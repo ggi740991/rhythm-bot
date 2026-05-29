@@ -809,13 +809,14 @@ class RhythmBotGUI:
         last_hit_t = [0.0] * lane_count
         holding = [False] * lane_count
         hold_last_seen = [0.0] * lane_count
+        hold_bottom = [0.0] * lane_count
 
         # ── 튜닝 상수 (위치 기반 판정) ──
         COOLDOWN = 0.025
         HIT_ABOVE = 3
         HIT_BELOW = 10
         LATE_CATCH_PX = 15
-        HOLD_GRACE = 0.08
+        HOLD_GRACE = 0.04
 
         last_log_time = 0.0
         frame_count = 0
@@ -872,8 +873,13 @@ class RhythmBotGUI:
 
                     # ── 롱노트 유지 중 ──
                     if holding[li]:
+                        if note.bottom < hold_bottom[li] - 30:
+                            release_set.add(li)
+                            holding[li] = False
+                            continue
                         hold_last_seen[li] = now
-                        if note.y >= judge_y:
+                        hold_bottom[li] = max(hold_bottom[li], note.bottom)
+                        if note.y >= judge_y - 3:
                             release_set.add(li)
                             holding[li] = False
                         continue
@@ -892,6 +898,7 @@ class RhythmBotGUI:
                             long_press.add(li)
                             holding[li] = True
                             hold_last_seen[li] = now
+                            hold_bottom[li] = note.bottom
                         else:
                             normal_press.add(li)
                         last_hit_t[li] = now
