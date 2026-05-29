@@ -793,6 +793,7 @@ class RhythmBotGUI:
         hsv_upper = [self.var_h_high.get(), self.var_s_high.get(), self.var_v_high.get()]
         judge_ratio = self.var_judge_ratio.get()
         offset_px = self.var_offset_px.get()
+        judge_update_counter = 0
 
         exc_w = self.var_exc_w.get()
         exc_h = self.var_exc_h.get()
@@ -813,9 +814,9 @@ class RhythmBotGUI:
 
         # ── 튜닝 상수 (위치 기반 판정) ──
         COOLDOWN = 0.025
-        HIT_ABOVE = 3
-        HIT_BELOW = 10
-        LATE_CATCH_PX = 15
+        HIT_ABOVE = 8
+        HIT_BELOW = 12
+        LATE_CATCH_PX = 18
         HOLD_GRACE = 0.04
 
         last_log_time = 0.0
@@ -830,6 +831,12 @@ class RhythmBotGUI:
                     continue
 
                 h, w = frame.shape[:2]
+
+                # 판정선 실시간 반영 (10프레임마다 갱신)
+                judge_update_counter += 1
+                if judge_update_counter % 10 == 0:
+                    judge_ratio = self.var_judge_ratio.get()
+                    offset_px = self.var_offset_px.get()
                 judge_y = int(h * judge_ratio) + offset_px
 
                 build_debug = preview_open and frame_count % 3 == 0
