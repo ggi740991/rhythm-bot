@@ -813,10 +813,10 @@ class RhythmBotGUI:
         hold_bottom = [0.0] * lane_count
 
         # ── 튜닝 상수 (위치 기반 판정) ──
-        COOLDOWN = 0.025
-        HIT_ABOVE = 8
+        COOLDOWN = 0.020
+        HIT_ABOVE = 10
         HIT_BELOW = 12
-        LATE_CATCH_PX = 18
+        LATE_CATCH_PX = 20
         HOLD_GRACE = 0.04
 
         last_log_time = 0.0
@@ -839,7 +839,7 @@ class RhythmBotGUI:
                     offset_px = self.var_offset_px.get()
                 judge_y = int(h * judge_ratio) + offset_px
 
-                build_debug = preview_open and frame_count % 3 == 0
+                build_debug = preview_open and frame_count % 6 == 0
                 notes = self.detector.detect(
                     frame=frame,
                     lane_count=lane_count,

@@ -90,7 +90,7 @@ class NoteDetector:
 
         # contour → 노트 변환
         notes: List[DetectedNote] = []
-        judge_cutoff = judge_line_y + 15 if judge_line_y > 0 else h
+        judge_cutoff = judge_line_y + 25 if judge_line_y > 0 else h
 
         for contour in contours:
             bx, by, bw, bh = cv2.boundingRect(contour)
