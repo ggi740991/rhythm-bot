@@ -864,9 +864,10 @@ class RhythmBotGUI:
                         ref = note.bottom if note.is_long else note.center_y
                         if ref > dead_y:
                             continue
-                        # 이미 입력한 노트가 판정선 아래 → 무시 (새 노트 우선)
+                        # 이미 입력한 노트가 판정선 아래 + 같은 위치 → 무시
                         if pressed[li] and ref > judge_y:
-                            continue
+                            if abs(note.center_y - track_y[li]) < 30:
+                                continue
                     if best[li] is None or note.center_y > best[li].center_y:
                         best[li] = note
 

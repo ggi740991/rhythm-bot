@@ -76,8 +76,8 @@ class NoteDetector:
             hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
             mask = cv2.inRange(hsv, self._hsv_lower_cache, self._hsv_upper_cache)
 
-            # 가벼운 노이즈 제거 (CLOSE만 - OPEN보다 빠름)
-            mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, self._kernel)
+            # 노이즈 제거 (OPEN: 노트 합침 없이 작은 노이즈만 제거)
+            mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, self._kernel)
 
             contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         except Exception:
