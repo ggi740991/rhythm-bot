@@ -809,6 +809,7 @@ class RhythmBotGUI:
         # ── 레인별 추적 상태 ──
         holding = [False] * lane_count
         hold_last_seen = [0.0] * lane_count
+        lane_hit = [False] * lane_count
 
         # ── 튜닝 상수 (위치 기반 판정) ──
         HIT_ABOVE = 3
@@ -869,6 +870,7 @@ class RhythmBotGUI:
 
                     # ── 노트 없음 ──
                     if note is None:
+                        lane_hit[li] = False
                         if holding[li]:
                             if now - hold_last_seen[li] > HOLD_GRACE:
                                 release_set.add(li)
@@ -896,13 +898,16 @@ class RhythmBotGUI:
                     if not should_hit and -LATE_CATCH_PX <= dist < -HIT_BELOW:
                         should_hit = True
 
-                    if should_hit:
+                    if should_hit and not lane_hit[li]:
+                        lane_hit[li] = True
                         if note.is_long:
                             long_press.add(li)
                             holding[li] = True
                             hold_last_seen[li] = now
                         else:
                             normal_press.add(li)
+                    elif not should_hit:
+                        lane_hit[li] = False
 
                 # ── 키 입력 실행 ──
                 if normal_press or long_press:
