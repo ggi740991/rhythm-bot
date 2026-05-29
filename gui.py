@@ -811,7 +811,6 @@ class RhythmBotGUI:
         hold_seen = [0.0] * lane_count
         pressed = [False] * lane_count
         track_y = [0.0] * lane_count
-        press_t = [0.0] * lane_count
 
         # ── 판정 상수 ──
         HIT_ABOVE = 0       # 판정선 도달 후에만 입력 (예측 없음)
@@ -898,12 +897,9 @@ class RhythmBotGUI:
                             holding[li] = False
                         continue
 
-                    # ── 3) 새 노트 감지 ──
-                    if pressed[li]:
-                        y_jump = note.center_y < track_y[li] - 20
-                        timeout = now - press_t[li] > 0.05
-                        if y_jump or timeout:
-                            pressed[li] = False
+                    # ── 3) 새 노트 감지 (위치가 12px 이상 위로 점프) ──
+                    if pressed[li] and note.center_y < track_y[li] - 12:
+                        pressed[li] = False
                     track_y[li] = note.center_y
 
                     if pressed[li]:
@@ -915,7 +911,6 @@ class RhythmBotGUI:
 
                     if -HIT_BELOW <= dist <= HIT_ABOVE:
                         pressed[li] = True
-                        press_t[li] = now
                         if note.is_long:
                             long_press.add(li)
                             holding[li] = True
