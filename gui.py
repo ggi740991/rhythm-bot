@@ -810,21 +810,19 @@ class RhythmBotGUI:
         prev_t = [0.0] * lane_count
         velocity = [0.0] * lane_count
         last_hit_t = [0.0] * lane_count
-        last_hit_y = [-9999.0] * lane_count
         holding = [False] * lane_count
         hold_last_seen = [0.0] * lane_count
         has_prev = [False] * lane_count
 
         # ── 튜닝 상수 ──
-        COOLDOWN = 0.035
+        COOLDOWN = 0.025
         LATENCY_COMP = 0.018
         VEL_ALPHA = 0.35
         MIN_VEL = 80.0
         FALLBACK_HIT_ABOVE = 25
         FALLBACK_HIT_BELOW = 10
         LATE_CATCH_PX = 15
-        HOLD_GRACE = 0.10
-        SAME_NOTE_DIST = 15
+        HOLD_GRACE = 0.05
 
         last_log_time = 0.0
         frame_count = 0
@@ -832,6 +830,7 @@ class RhythmBotGUI:
 
         while self._running and not self._stop_event.is_set():
             try:
+                self.input_mgr.tick()
                 frame = self.capture.capture(region)
                 if frame is None or frame.size == 0:
                     continue
@@ -897,12 +896,8 @@ class RhythmBotGUI:
 
                     # ── 롱노트 유지 중 ──
                     if holding[li]:
-                        if note.is_long:
-                            hold_last_seen[li] = now
-                            if note.y >= judge_y:
-                                release_set.add(li)
-                                holding[li] = False
-                        else:
+                        hold_last_seen[li] = now
+                        if note.y >= judge_y:
                             release_set.add(li)
                             holding[li] = False
                         continue
@@ -922,20 +917,13 @@ class RhythmBotGUI:
                         should_hit = True
 
                     if should_hit and (now - last_hit_t[li]) >= COOLDOWN:
-                        if velocity[li] >= MIN_VEL and last_hit_y[li] > -999:
-                            expected_old = last_hit_y[li] + velocity[li] * (now - last_hit_t[li])
-                            if abs(note.center_y - expected_old) < SAME_NOTE_DIST:
-                                should_hit = False
-
-                        if should_hit:
-                            if note.is_long:
-                                long_press.add(li)
-                                holding[li] = True
-                                hold_last_seen[li] = now
-                            else:
-                                normal_press.add(li)
-                            last_hit_t[li] = now
-                            last_hit_y[li] = note.center_y
+                        if note.is_long:
+                            long_press.add(li)
+                            holding[li] = True
+                            hold_last_seen[li] = now
+                        else:
+                            normal_press.add(li)
+                        last_hit_t[li] = now
 
                 # ── 키 입력 실행 ──
                 if normal_press or long_press:
