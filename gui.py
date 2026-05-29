@@ -807,15 +807,16 @@ class RhythmBotGUI:
             }
 
         # ── 레인별 상태 ──
-        holding = [False] * lane_count       # 롱노트 홀드 중
-        hold_seen = [0.0] * lane_count       # 롱노트 마지막 감지 시각
-        pressed = [False] * lane_count       # 현재 노트 입력 완료 여부
-        track_y = [0.0] * lane_count         # 추적 중인 노트의 center_y
+        holding = [False] * lane_count
+        hold_seen = [0.0] * lane_count
+        pressed = [False] * lane_count
+        track_y = [0.0] * lane_count
+        press_t = [0.0] * lane_count
 
         # ── 판정 상수 ──
-        HIT_ABOVE = 0       # 판정선 도달 후에만 입력
-        HIT_BELOW = 18      # 판정선 아래 18px까지 입력 허용
-        HOLD_GRACE = 0.03   # 롱노트 감지 끊김 허용 시간 (30ms)
+        HIT_ABOVE = 0       # 판정선 도달 후에만 입력 (예측 없음)
+        HIT_BELOW = 18      # 판정선 아래 18px까지 허용
+        HOLD_GRACE = 0.03   # 롱노트 감지 끊김 허용 (30ms)
 
         last_log_time = 0.0
         frame_count = 0
@@ -853,12 +854,20 @@ class RhythmBotGUI:
                 self._fps_display = self.capture.fps
                 frame_count += 1
 
-                # ── 레인별 판정선에 가장 가까운 노트 선택 ──
+                # ── 노트 선택: 지나간 노트 제외, 판정선에 가장 가까운 노트 ──
+                dead_y = judge_y + HIT_BELOW
                 best = [None] * lane_count
                 for note in notes:
-                    if note.lane < lane_count:
-                        if best[note.lane] is None or note.center_y > best[note.lane].center_y:
-                            best[note.lane] = note
+                    li = note.lane
+                    if li >= lane_count:
+                        continue
+                    # 홀드 중이 아닌 레인: 윈도우를 완전히 지난 노트 무시
+                    if not holding[li]:
+                        ref = note.bottom if note.is_long else note.center_y
+                        if ref > dead_y:
+                            continue
+                    if best[li] is None or note.center_y > best[li].center_y:
+                        best[li] = note
 
                 normal_press = set()
                 long_press = set()
@@ -869,7 +878,6 @@ class RhythmBotGUI:
 
                     # ── 1) 노트 없음 ──
                     if note is None:
-                        pressed[li] = False
                         if holding[li] and now - hold_seen[li] > HOLD_GRACE:
                             release_set.add(li)
                             holding[li] = False
@@ -890,20 +898,24 @@ class RhythmBotGUI:
                             holding[li] = False
                         continue
 
-                    # ── 3) 새 노트 감지 (위치가 위로 점프) ──
-                    if pressed[li] and note.center_y < track_y[li] - 20:
-                        pressed[li] = False
+                    # ── 3) 새 노트 감지 ──
+                    if pressed[li]:
+                        y_jump = note.center_y < track_y[li] - 20
+                        timeout = now - press_t[li] > 0.15
+                        if y_jump or timeout:
+                            pressed[li] = False
                     track_y[li] = note.center_y
 
-                    # ── 4) 히트 판정 ──
                     if pressed[li]:
                         continue
 
+                    # ── 4) 히트 판정 (판정선 도달 후 입력) ──
                     hit_ref = note.bottom if note.is_long else note.center_y
                     dist = judge_y - hit_ref
 
                     if -HIT_BELOW <= dist <= HIT_ABOVE:
                         pressed[li] = True
+                        press_t[li] = now
                         if note.is_long:
                             long_press.add(li)
                             holding[li] = True
