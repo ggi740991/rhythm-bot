@@ -809,7 +809,8 @@ class RhythmBotGUI:
         # ── 레인별 추적 상태 ──
         holding = [False] * lane_count
         hold_last_seen = [0.0] * lane_count
-        lane_hit = [False] * lane_count
+        last_hit_y = [-999.0] * lane_count
+        last_hit_t = [0.0] * lane_count
 
         # ── 튜닝 상수 (위치 기반 판정) ──
         HIT_ABOVE = 3
@@ -870,7 +871,6 @@ class RhythmBotGUI:
 
                     # ── 노트 없음 ──
                     if note is None:
-                        lane_hit[li] = False
                         if holding[li]:
                             if now - hold_last_seen[li] > HOLD_GRACE:
                                 release_set.add(li)
@@ -898,16 +898,21 @@ class RhythmBotGUI:
                     if not should_hit and -LATE_CATCH_PX <= dist < -HIT_BELOW:
                         should_hit = True
 
-                    if should_hit and not lane_hit[li]:
-                        lane_hit[li] = True
-                        if note.is_long:
-                            long_press.add(li)
-                            holding[li] = True
-                            hold_last_seen[li] = now
-                        else:
-                            normal_press.add(li)
-                    elif not should_hit:
-                        lane_hit[li] = False
+                    if should_hit:
+                        y_diff = note.center_y - last_hit_y[li]
+                        time_diff = now - last_hit_t[li]
+                        is_new = (last_hit_y[li] < -900
+                                  or y_diff < -15
+                                  or time_diff > 0.12)
+                        if is_new:
+                            last_hit_y[li] = note.center_y
+                            last_hit_t[li] = now
+                            if note.is_long:
+                                long_press.add(li)
+                                holding[li] = True
+                                hold_last_seen[li] = now
+                            else:
+                                normal_press.add(li)
 
                 # ── 키 입력 실행 ──
                 if normal_press or long_press:
