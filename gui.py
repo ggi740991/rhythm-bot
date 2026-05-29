@@ -816,15 +816,15 @@ class RhythmBotGUI:
         has_prev = [False] * lane_count
 
         # ── 튜닝 상수 ──
-        COOLDOWN = 0.050
-        LATENCY_COMP = 0.015
+        COOLDOWN = 0.035
+        LATENCY_COMP = 0.018
         VEL_ALPHA = 0.35
         MIN_VEL = 80.0
-        FALLBACK_HIT_ABOVE = 20
-        FALLBACK_HIT_BELOW = 8
-        LATE_CATCH_PX = 12
+        FALLBACK_HIT_ABOVE = 25
+        FALLBACK_HIT_BELOW = 10
+        LATE_CATCH_PX = 15
         HOLD_GRACE = 0.10
-        SAME_NOTE_DIST = 25
+        SAME_NOTE_DIST = 15
 
         last_log_time = 0.0
         frame_count = 0
@@ -899,7 +899,7 @@ class RhythmBotGUI:
                     if holding[li]:
                         if note.is_long:
                             hold_last_seen[li] = now
-                            if note.bottom < judge_y - 5:
+                            if note.y >= judge_y:
                                 release_set.add(li)
                                 holding[li] = False
                         else:
@@ -908,7 +908,8 @@ class RhythmBotGUI:
                         continue
 
                     # ── 히트 판정 ──
-                    dist = judge_y - note.center_y
+                    hit_ref = note.bottom if note.is_long else note.center_y
+                    dist = judge_y - hit_ref
                     should_hit = False
 
                     if velocity[li] >= MIN_VEL:
