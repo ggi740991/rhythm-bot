@@ -778,10 +778,10 @@ class RhythmBotGUI:
     # ═══════════ 봇 루프 ═══════════
 
     def _bot_loop(self):
-        """메인 봇 루프 - 노트 추적 & 속도 예측 기반 판정"""
+        """메인 봇 루프 - 위치 기반 판정"""
         perf = time.perf_counter
 
-        # ── 설정값 캐싱 (매 프레임 tkinter 접근 방지) ──
+        # ── 설정값 캐싱 ──
         region = {
             "x": self.var_cap_x.get(),
             "y": self.var_cap_y.get(),
@@ -806,17 +806,16 @@ class RhythmBotGUI:
                 "height": exc_h,
             }
 
-        # ── 레인별 추적 상태 ──
-        holding = [False] * lane_count
-        hold_last_seen = [0.0] * lane_count
-        last_hit_y = [-999.0] * lane_count
-        last_hit_t = [0.0] * lane_count
+        # ── 레인별 상태 ──
+        holding = [False] * lane_count       # 롱노트 홀드 중
+        hold_seen = [0.0] * lane_count       # 롱노트 마지막 감지 시각
+        pressed = [False] * lane_count       # 현재 노트 입력 완료 여부
+        track_y = [0.0] * lane_count         # 추적 중인 노트의 center_y
 
-        # ── 튜닝 상수 (위치 기반 판정) ──
-        HIT_ABOVE = 3
-        HIT_BELOW = 10
-        LATE_CATCH_PX = 15
-        HOLD_GRACE = 0.03
+        # ── 판정 상수 ──
+        HIT_ABOVE = 4       # 판정선 위 4px부터 입력 허용
+        HIT_BELOW = 14      # 판정선 아래 14px까지 입력 허용
+        HOLD_GRACE = 0.03   # 롱노트 감지 끊김 허용 시간 (30ms)
 
         last_log_time = 0.0
         frame_count = 0
@@ -831,7 +830,6 @@ class RhythmBotGUI:
 
                 h, w = frame.shape[:2]
 
-                # 판정선 실시간 반영 (10프레임마다 갱신)
                 judge_update_counter += 1
                 if judge_update_counter % 10 == 0:
                     judge_ratio = self.var_judge_ratio.get()
@@ -869,50 +867,49 @@ class RhythmBotGUI:
                 for li in range(lane_count):
                     note = best[li]
 
-                    # ── 노트 없음 ──
+                    # ── 1) 노트 없음 ──
                     if note is None:
-                        if holding[li]:
-                            if now - hold_last_seen[li] > HOLD_GRACE:
-                                release_set.add(li)
-                                holding[li] = False
+                        pressed[li] = False
+                        if holding[li] and now - hold_seen[li] > HOLD_GRACE:
+                            release_set.add(li)
+                            holding[li] = False
                         continue
 
-                    # ── 롱노트 유지 중 ──
+                    # ── 2) 롱노트 홀드 중 ──
                     if holding[li]:
+                        # 새 노트가 판정선 위 40px 이상 → 홀드 해제
                         if note.center_y < judge_y - 40:
                             release_set.add(li)
                             holding[li] = False
+                            pressed[li] = False
                             continue
-                        hold_last_seen[li] = now
-                        if note.y >= judge_y - 8:
+                        hold_seen[li] = now
+                        # 꼬리(상단)가 판정선 도달 → 홀드 해제
+                        if note.y >= judge_y:
                             release_set.add(li)
                             holding[li] = False
                         continue
 
-                    # ── 히트 판정 (위치 기반) ──
+                    # ── 3) 새 노트 감지 (위치가 위로 점프) ──
+                    if pressed[li] and note.center_y < track_y[li] - 20:
+                        pressed[li] = False
+                    track_y[li] = note.center_y
+
+                    # ── 4) 히트 판정 ──
+                    if pressed[li]:
+                        continue
+
                     hit_ref = note.bottom if note.is_long else note.center_y
                     dist = judge_y - hit_ref
 
-                    should_hit = (-HIT_BELOW <= dist <= HIT_ABOVE)
-
-                    if not should_hit and -LATE_CATCH_PX <= dist < -HIT_BELOW:
-                        should_hit = True
-
-                    if should_hit:
-                        y_diff = note.center_y - last_hit_y[li]
-                        time_diff = now - last_hit_t[li]
-                        is_new = (last_hit_y[li] < -900
-                                  or y_diff < -15
-                                  or time_diff > 0.12)
-                        if is_new:
-                            last_hit_y[li] = note.center_y
-                            last_hit_t[li] = now
-                            if note.is_long:
-                                long_press.add(li)
-                                holding[li] = True
-                                hold_last_seen[li] = now
-                            else:
-                                normal_press.add(li)
+                    if -HIT_BELOW <= dist <= HIT_ABOVE:
+                        pressed[li] = True
+                        if note.is_long:
+                            long_press.add(li)
+                            holding[li] = True
+                            hold_seen[li] = now
+                        else:
+                            normal_press.add(li)
 
                 # ── 키 입력 실행 ──
                 if normal_press or long_press:
