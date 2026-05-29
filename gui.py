@@ -813,10 +813,10 @@ class RhythmBotGUI:
         hold_bottom = [0.0] * lane_count
 
         # ── 튜닝 상수 (위치 기반 판정) ──
-        COOLDOWN = 0.020
-        HIT_ABOVE = 10
-        HIT_BELOW = 12
-        LATE_CATCH_PX = 20
+        COOLDOWN = 0.030
+        HIT_ABOVE = 5
+        HIT_BELOW = 8
+        LATE_CATCH_PX = 12
         HOLD_GRACE = 0.04
 
         last_log_time = 0.0
