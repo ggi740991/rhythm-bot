@@ -901,7 +901,7 @@ class RhythmBotGUI:
                     # ── 3) 새 노트 감지 ──
                     if pressed[li]:
                         y_jump = note.center_y < track_y[li] - 20
-                        timeout = now - press_t[li] > 0.15
+                        timeout = now - press_t[li] > 0.05
                         if y_jump or timeout:
                             pressed[li] = False
                     track_y[li] = note.center_y
