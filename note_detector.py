@@ -40,6 +40,9 @@ class NoteDetector:
         self._detected_notes: List[DetectedNote] = []
         self._debug_frame: Optional[np.ndarray] = None
         self._kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)) if cv2 else None
+        self._hsv_lower_cache = None
+        self._hsv_upper_cache = None
+        self._last_hsv_key = None
 
     def detect(
         self,
@@ -61,10 +64,17 @@ class NoteDetector:
 
         h, w = frame.shape[:2]
 
+        # HSV 바운드 캠시 (매 프레임 np.array 생성 방지)
+        hsv_key = (tuple(hsv_lower), tuple(hsv_upper))
+        if hsv_key != self._last_hsv_key:
+            self._hsv_lower_cache = np.array(hsv_lower, np.uint8)
+            self._hsv_upper_cache = np.array(hsv_upper, np.uint8)
+            self._last_hsv_key = hsv_key
+
         # HSV 마스크 생성
         try:
             hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-            mask = cv2.inRange(hsv, np.array(hsv_lower, np.uint8), np.array(hsv_upper, np.uint8))
+            mask = cv2.inRange(hsv, self._hsv_lower_cache, self._hsv_upper_cache)
 
             # 가벼운 노이즈 제거 (CLOSE만 - OPEN보다 빠름)
             mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, self._kernel)
@@ -117,37 +127,25 @@ class NoteDetector:
         # 디버그 프레임 (미리보기 열려있을 때만)
         if build_debug:
             debug_frame = frame.copy()
-            # 레인 구분선
             for i in range(1, lane_count):
                 lx = int(i * lane_width)
                 cv2.line(debug_frame, (lx, 0), (lx, h), (0, 255, 255), 1)
 
-            # 노트 박스
             for note in notes:
                 color = (255, 165, 0) if note.is_long else (0, 255, 0)
                 cv2.rectangle(debug_frame, (note.x, note.y),
                               (note.x + note.w, note.y + note.h), color, 2)
 
-            # 판정선 + 판정 영역
             if judge_line_y > 0:
-                ht = judge_line_y - 50
-                hb = judge_line_y + 15
-                overlay = debug_frame.copy()
-                cv2.rectangle(overlay, (0, ht), (w, hb), (0, 100, 255), -1)
-                cv2.addWeighted(overlay, 0.2, debug_frame, 0.8, 0, debug_frame)
                 cv2.line(debug_frame, (0, judge_line_y), (w, judge_line_y), (0, 0, 255), 2)
                 cv2.putText(debug_frame, "JUDGE", (5, judge_line_y - 5),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
 
-            # 콤보 제외 영역
             if has_exclude:
                 cv2.rectangle(debug_frame, (ex, ey), (ex + ew, ey + eh), (0, 165, 255), 2)
 
             with self._lock:
                 self._debug_frame = debug_frame
-        else:
-            with self._lock:
-                self._detected_notes = notes
 
         return notes
 

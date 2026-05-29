@@ -836,7 +836,7 @@ class RhythmBotGUI:
                     offset_px = self.var_offset_px.get()
                 judge_y = int(h * judge_ratio) + offset_px
 
-                build_debug = preview_open and frame_count % 6 == 0
+                build_debug = preview_open and frame_count % 10 == 0
                 notes = self.detector.detect(
                     frame=frame,
                     lane_count=lane_count,
