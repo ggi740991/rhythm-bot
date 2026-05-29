@@ -811,7 +811,7 @@ class RhythmBotGUI:
         hold_last_seen = [0.0] * lane_count
 
         # ── 튜닝 상수 (위치 기반 판정) ──
-        HIT_ABOVE = 8
+        HIT_ABOVE = 3
         HIT_BELOW = 10
         LATE_CATCH_PX = 15
         HOLD_GRACE = 0.03
