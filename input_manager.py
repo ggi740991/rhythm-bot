@@ -59,7 +59,7 @@ class InputManager:
         if not self._running:
             return
 
-        now = time.time()
+        now = time.perf_counter()
         for lane in lanes | long_lanes:
             if lane >= len(self._key_bindings):
                 continue
