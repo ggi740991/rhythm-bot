@@ -813,8 +813,8 @@ class RhythmBotGUI:
         track_y = [0.0] * lane_count         # 추적 중인 노트의 center_y
 
         # ── 판정 상수 ──
-        HIT_ABOVE = 4       # 판정선 위 4px부터 입력 허용
-        HIT_BELOW = 14      # 판정선 아래 14px까지 입력 허용
+        HIT_ABOVE = 0       # 판정선 도달 후에만 입력
+        HIT_BELOW = 18      # 판정선 아래 18px까지 입력 허용
         HOLD_GRACE = 0.03   # 롱노트 감지 끊김 허용 시간 (30ms)
 
         last_log_time = 0.0
