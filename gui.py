@@ -853,17 +853,19 @@ class RhythmBotGUI:
                 self._fps_display = self.capture.fps
                 frame_count += 1
 
-                # ── 노트 선택: 지나간 노트 제외, 판정선에 가장 가까운 노트 ──
+                # ── 노트 선택: 이미 친 노트 + 지나간 노트 제외 ──
                 dead_y = judge_y + HIT_BELOW
                 best = [None] * lane_count
                 for note in notes:
                     li = note.lane
                     if li >= lane_count:
                         continue
-                    # 홀드 중이 아닌 레인: 윈도우를 완전히 지난 노트 무시
                     if not holding[li]:
                         ref = note.bottom if note.is_long else note.center_y
                         if ref > dead_y:
+                            continue
+                        # 이미 입력한 노트가 판정선 아래 → 무시 (새 노트 우선)
+                        if pressed[li] and ref > judge_y:
                             continue
                     if best[li] is None or note.center_y > best[li].center_y:
                         best[li] = note

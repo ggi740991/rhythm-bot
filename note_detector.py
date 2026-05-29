@@ -26,7 +26,7 @@ class DetectedNote:
         self.center_y = center_y
         self.top = y
         self.bottom = y + h
-        self.is_long = h > w * 0.7 and h > 25
+        self.is_long = h > w * 1.3 and h > 35
 
     def __repr__(self) -> str:
         return f"Note(L{self.lane} y={self.center_y}{' LONG' if self.is_long else ''})"
