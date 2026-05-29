@@ -666,7 +666,7 @@ class RhythmBotGUI:
             keys = [k.strip() for k in self.var_keys.get().split(",")]
             self.input_mgr.configure(
                 key_bindings=keys,
-                debounce_ms=35,
+                debounce_ms=8,
                 input_delay_ms=self.var_delay.get(),
             )
             self.input_mgr.start()
@@ -809,6 +809,8 @@ class RhythmBotGUI:
         # ── 레인별 상태 ──
         holding = [False] * lane_count
         hold_seen = [0.0] * lane_count
+        pressed = [False] * lane_count
+        track_y = [0.0] * lane_count
 
         # ── 판정 상수 ──
         HIT_ABOVE = 0       # 판정선 도달 후에만 입력 (예측 없음)
@@ -872,8 +874,9 @@ class RhythmBotGUI:
                 for li in range(lane_count):
                     note = best[li]
 
-                    # ── 1) 노트 없음 ──
+                    # ── 1) 노트 없음 → pressed 리셋 ──
                     if note is None:
+                        pressed[li] = False
                         if holding[li] and now - hold_seen[li] > HOLD_GRACE:
                             release_set.add(li)
                             holding[li] = False
@@ -884,6 +887,7 @@ class RhythmBotGUI:
                         if note.center_y < judge_y - 40:
                             release_set.add(li)
                             holding[li] = False
+                            pressed[li] = False
                             continue
                         hold_seen[li] = now
                         if note.y >= judge_y:
@@ -891,11 +895,24 @@ class RhythmBotGUI:
                             holding[li] = False
                         continue
 
-                    # ── 3) 히트 판정 (중복은 입력 매니저가 처리) ──
+                    # ── 3) pressed 리셋 판단 ──
+                    if pressed[li]:
+                        hit_ref = note.bottom if note.is_long else note.center_y
+                        new_from_above = hit_ref <= judge_y
+                        y_jumped = note.center_y < track_y[li] - 8
+                        if new_from_above or y_jumped:
+                            pressed[li] = False
+                    track_y[li] = note.center_y
+
+                    if pressed[li]:
+                        continue
+
+                    # ── 4) 히트 판정 ──
                     hit_ref = note.bottom if note.is_long else note.center_y
                     dist = judge_y - hit_ref
 
                     if -HIT_BELOW <= dist <= HIT_ABOVE:
+                        pressed[li] = True
                         if note.is_long:
                             long_press.add(li)
                             holding[li] = True

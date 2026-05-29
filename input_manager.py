@@ -28,14 +28,14 @@ class InputManager:
         self._key_bindings: List[str] = []
         self._last_press_time: Dict[int, float] = {}
         self._key_held: Dict[int, bool] = {}
-        self._debounce_sec: float = 0.035
+        self._debounce_sec: float = 0.008
         self._active_lanes: Set[int] = set()
         self._running = False
         self._press_count = 0
         self._pending_releases: List[int] = []
         self._release_after: float = 0.0
 
-    def configure(self, key_bindings: List[str], debounce_ms: int = 35,
+    def configure(self, key_bindings: List[str], debounce_ms: int = 8,
                   input_delay_ms: int = 0) -> None:
         self._key_bindings = list(key_bindings)
         self._debounce_sec = debounce_ms / 1000.0
