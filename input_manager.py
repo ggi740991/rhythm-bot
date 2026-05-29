@@ -65,7 +65,7 @@ class InputManager:
                 continue
             if now - self._last_press_time.get(lane, 0.0) < self._debounce_sec:
                 continue
-            if lane in long_lanes and self._key_held.get(lane, False):
+            if self._key_held.get(lane, False):
                 continue
 
             key = self._key_bindings[lane]

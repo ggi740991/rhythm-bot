@@ -805,6 +805,7 @@ class RhythmBotGUI:
         last_log_time = 0.0
         frame_count = 0
         preview_open = self._preview_win is not None
+        prev_normal_lanes: set = set()
 
         while self._running and not self._stop_event.is_set():
             try:
@@ -856,25 +857,29 @@ class RhythmBotGUI:
                         else:
                             normal_lanes.add(note.lane)
 
-                # 키 입력
-                all_press = normal_lanes | long_lanes
-                if all_press:
-                    self.input_mgr.press_lanes_batch(
-                        normal_lanes - long_lanes, long_lanes
-                    )
+                # 새로 판정선에 진입한 일반 노트만 탭 (같은 노트 연타 방지)
+                new_normal = (normal_lanes - long_lanes) - prev_normal_lanes
+                prev_normal_lanes = normal_lanes - long_lanes
 
-                # 롱노트 해제
+                # 키 입력
+                if new_normal or long_lanes:
+                    self.input_mgr.press_lanes_batch(new_normal, long_lanes)
+
+                # 롱노트 해제: 노트가 판정선 아래로 완전히 빠져나가면 해제
                 long_hold = set()
                 for note in notes:
-                    if note.is_long and note.bottom >= hit_top and note.top <= judge_y + 20:
+                    if note.is_long and note.bottom >= hit_top and note.top <= judge_y + 30:
                         long_hold.add(note.lane)
 
+                lanes_in_zone = normal_lanes | long_lanes
                 release = set()
                 for lane in range(lane_count):
-                    if lane not in long_hold and lane not in all_press:
+                    if lane not in long_hold and lane not in lanes_in_zone:
                         release.add(lane)
                 if release:
                     self.input_mgr.release_lanes_batch(release)
+
+                time.sleep(0.001)
 
             except Exception as e:
                 self._log(f"오류: {e}")
