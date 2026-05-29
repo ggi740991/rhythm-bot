@@ -55,11 +55,13 @@ class InputManager:
         self._active_lanes = set()
 
     def press_lanes_batch(self, lanes: Set[int], long_lanes: Set[int]) -> None:
-        """여러 레인의 키를 입력 (keyboard 라이브러리 사용)"""
+        """여러 레인의 키를 동시에 입력 (동타 지원)"""
         if not self._running:
             return
 
         now = time.perf_counter()
+        tap_lanes: List[int] = []
+
         for lane in lanes | long_lanes:
             if lane >= len(self._key_bindings):
                 continue
@@ -70,15 +72,22 @@ class InputManager:
 
             key = self._key_bindings[lane]
 
-            if lane in long_lanes:
-                self._press_key(key)
-                self._key_held[lane] = True
-            else:
-                self._tap_key(key)
-
+            # 모든 키를 먼저 누름 (동시 입력)
+            self._press_key(key)
             self._last_press_time[lane] = now
             self._active_lanes.add(lane)
             self._press_count += 1
+
+            if lane in long_lanes:
+                self._key_held[lane] = True
+            else:
+                tap_lanes.append(lane)
+
+        # 짧은 노트 키: 잠시 유지 후 해제 (게임이 동시 입력으로 인식하도록)
+        if tap_lanes:
+            time.sleep(0.008)
+            for lane in tap_lanes:
+                self._release_key(self._key_bindings[lane])
 
     def release_lanes_batch(self, lanes: Set[int]) -> None:
         """여러 레인 키를 해제"""
