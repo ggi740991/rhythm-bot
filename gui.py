@@ -814,7 +814,7 @@ class RhythmBotGUI:
         HIT_ABOVE = 8
         HIT_BELOW = 10
         LATE_CATCH_PX = 15
-        HOLD_GRACE = 0.04
+        HOLD_GRACE = 0.03
 
         last_log_time = 0.0
         frame_count = 0
@@ -882,7 +882,7 @@ class RhythmBotGUI:
                             holding[li] = False
                             continue
                         hold_last_seen[li] = now
-                        if note.y >= judge_y - 5:
+                        if note.y >= judge_y - 8:
                             release_set.add(li)
                             holding[li] = False
                         continue
