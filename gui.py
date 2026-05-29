@@ -806,23 +806,16 @@ class RhythmBotGUI:
             }
 
         # ── 레인별 추적 상태 ──
-        prev_y = [0.0] * lane_count
-        prev_t = [0.0] * lane_count
-        velocity = [0.0] * lane_count
         last_hit_t = [0.0] * lane_count
         holding = [False] * lane_count
         hold_last_seen = [0.0] * lane_count
-        has_prev = [False] * lane_count
 
-        # ── 튜닝 상수 ──
+        # ── 튜닝 상수 (위치 기반 판정) ──
         COOLDOWN = 0.025
-        LATENCY_COMP = 0.018
-        VEL_ALPHA = 0.35
-        MIN_VEL = 80.0
-        FALLBACK_HIT_ABOVE = 25
-        FALLBACK_HIT_BELOW = 10
+        HIT_ABOVE = 3
+        HIT_BELOW = 10
         LATE_CATCH_PX = 15
-        HOLD_GRACE = 0.05
+        HOLD_GRACE = 0.08
 
         last_log_time = 0.0
         frame_count = 0
@@ -875,24 +868,7 @@ class RhythmBotGUI:
                             if now - hold_last_seen[li] > HOLD_GRACE:
                                 release_set.add(li)
                                 holding[li] = False
-                        has_prev[li] = False
                         continue
-
-                    # ── 속도 추적 (EMA) ──
-                    if has_prev[li]:
-                        dt = now - prev_t[li]
-                        if 0.001 < dt < 0.15:
-                            dy = note.center_y - prev_y[li]
-                            if dy >= 0:
-                                iv = dy / dt
-                                if velocity[li] < MIN_VEL:
-                                    velocity[li] = iv
-                                else:
-                                    velocity[li] = velocity[li] * (1 - VEL_ALPHA) + iv * VEL_ALPHA
-
-                    prev_y[li] = note.center_y
-                    prev_t[li] = now
-                    has_prev[li] = True
 
                     # ── 롱노트 유지 중 ──
                     if holding[li]:
@@ -902,18 +878,13 @@ class RhythmBotGUI:
                             holding[li] = False
                         continue
 
-                    # ── 히트 판정 ──
+                    # ── 히트 판정 (위치 기반) ──
                     hit_ref = note.bottom if note.is_long else note.center_y
                     dist = judge_y - hit_ref
-                    should_hit = False
 
-                    if velocity[li] >= MIN_VEL:
-                        time_to_arrive = dist / velocity[li]
-                        should_hit = time_to_arrive <= LATENCY_COMP
-                    else:
-                        should_hit = (-FALLBACK_HIT_BELOW <= dist <= FALLBACK_HIT_ABOVE)
+                    should_hit = (-HIT_BELOW <= dist <= HIT_ABOVE)
 
-                    if not should_hit and -LATE_CATCH_PX <= dist < -FALLBACK_HIT_BELOW:
+                    if not should_hit and -LATE_CATCH_PX <= dist < -HIT_BELOW:
                         should_hit = True
 
                     if should_hit and (now - last_hit_t[li]) >= COOLDOWN:
@@ -935,10 +906,9 @@ class RhythmBotGUI:
                 if now - last_log_time > 3.0:
                     last_log_time = now
                     preview_open = self._preview_win is not None
-                    vel_str = "/".join(f"{v:.0f}" for v in velocity)
                     self._log(
                         f"노트:{len(notes)}개 | FPS:{self.capture.fps:.0f} | "
-                        f"입력:{self.input_mgr.press_count} | 속도(px/s):{vel_str}"
+                        f"입력:{self.input_mgr.press_count}"
                     )
 
             except Exception as e:

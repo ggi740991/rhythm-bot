@@ -98,7 +98,7 @@ class InputManager:
 
         # 탭 키 릴리즈를 다음 프레임으로 예약 (블로킹 없음)
         if tap_lanes:
-            self._pending_releases = tap_lanes
+            self._pending_releases.extend(tap_lanes)
             self._release_after = now + 0.006
 
     def release_lanes_batch(self, lanes: Set[int]) -> None:
