@@ -666,7 +666,7 @@ class RhythmBotGUI:
             keys = [k.strip() for k in self.var_keys.get().split(",")]
             self.input_mgr.configure(
                 key_bindings=keys,
-                debounce_ms=8,
+                debounce_ms=35,
                 input_delay_ms=self.var_delay.get(),
             )
             self.input_mgr.start()

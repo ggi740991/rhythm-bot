@@ -39,7 +39,7 @@ class NoteDetector:
         self._lock = threading.Lock()
         self._detected_notes: List[DetectedNote] = []
         self._debug_frame: Optional[np.ndarray] = None
-        self._kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)) if cv2 else None
+        self._kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2)) if cv2 else None
         self._hsv_lower_cache = None
         self._hsv_upper_cache = None
         self._last_hsv_key = None
@@ -76,8 +76,8 @@ class NoteDetector:
             hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
             mask = cv2.inRange(hsv, self._hsv_lower_cache, self._hsv_upper_cache)
 
-            # 노이즈 제거 (OPEN: 노트 합침 없이 작은 노이즈만 제거)
-            mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, self._kernel)
+            # 노이즈 제거 (CLOSE 2x2: 롱노트 틈 메꿈 + 가까운 노트 합침 최소화)
+            mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, self._kernel)
 
             contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         except Exception:
