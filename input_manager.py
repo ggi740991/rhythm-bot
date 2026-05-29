@@ -28,14 +28,14 @@ class InputManager:
         self._key_bindings: List[str] = []
         self._last_press_time: Dict[int, float] = {}
         self._key_held: Dict[int, bool] = {}
-        self._debounce_sec: float = 0.008
+        self._debounce_sec: float = 0.035
         self._active_lanes: Set[int] = set()
         self._running = False
         self._press_count = 0
         self._pending_releases: List[int] = []
         self._release_after: float = 0.0
 
-    def configure(self, key_bindings: List[str], debounce_ms: int = 8,
+    def configure(self, key_bindings: List[str], debounce_ms: int = 35,
                   input_delay_ms: int = 0) -> None:
         self._key_bindings = list(key_bindings)
         self._debounce_sec = debounce_ms / 1000.0
@@ -78,10 +78,14 @@ class InputManager:
         for lane in lanes | long_lanes:
             if lane >= len(self._key_bindings):
                 continue
-            if now - self._last_press_time.get(lane, 0.0) < self._debounce_sec:
-                continue
-            if lane in long_lanes and self._key_held.get(lane, False):
-                continue
+            if lane in long_lanes:
+                # 롱노트: 이미 홀드 중이면 스킵 (디바운스 없음)
+                if self._key_held.get(lane, False):
+                    continue
+            else:
+                # 일반노트: 디바운스로 중복 입력 방지
+                if now - self._last_press_time.get(lane, 0.0) < self._debounce_sec:
+                    continue
 
             key = self._key_bindings[lane]
 

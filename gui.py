@@ -809,8 +809,6 @@ class RhythmBotGUI:
         # ── 레인별 상태 ──
         holding = [False] * lane_count
         hold_seen = [0.0] * lane_count
-        pressed = [False] * lane_count
-        track_y = [0.0] * lane_count
 
         # ── 판정 상수 ──
         HIT_ABOVE = 0       # 판정선 도달 후에만 입력 (예측 없음)
@@ -853,7 +851,7 @@ class RhythmBotGUI:
                 self._fps_display = self.capture.fps
                 frame_count += 1
 
-                # ── 노트 선택: 이미 친 노트 + 지나간 노트 제외 ──
+                # ── 노트 선택: 지나간 노트 제외 ──
                 dead_y = judge_y + HIT_BELOW
                 best = [None] * lane_count
                 for note in notes:
@@ -864,10 +862,6 @@ class RhythmBotGUI:
                         ref = note.bottom if note.is_long else note.center_y
                         if ref > dead_y:
                             continue
-                        # 이미 입력한 노트가 판정선 아래 + 같은 위치 → 무시
-                        if pressed[li] and ref > judge_y:
-                            if abs(note.center_y - track_y[li]) < 30:
-                                continue
                     if best[li] is None or note.center_y > best[li].center_y:
                         best[li] = note
 
@@ -887,33 +881,21 @@ class RhythmBotGUI:
 
                     # ── 2) 롱노트 홀드 중 ──
                     if holding[li]:
-                        # 새 노트가 판정선 위 40px 이상 → 홀드 해제
                         if note.center_y < judge_y - 40:
                             release_set.add(li)
                             holding[li] = False
-                            pressed[li] = False
                             continue
                         hold_seen[li] = now
-                        # 꼬리(상단)가 판정선 도달 → 홀드 해제
                         if note.y >= judge_y:
                             release_set.add(li)
                             holding[li] = False
                         continue
 
-                    # ── 3) 새 노트 감지 (위치가 12px 이상 위로 점프) ──
-                    if pressed[li] and note.center_y < track_y[li] - 12:
-                        pressed[li] = False
-                    track_y[li] = note.center_y
-
-                    if pressed[li]:
-                        continue
-
-                    # ── 4) 히트 판정 (판정선 도달 후 입력) ──
+                    # ── 3) 히트 판정 (중복은 입력 매니저가 처리) ──
                     hit_ref = note.bottom if note.is_long else note.center_y
                     dist = judge_y - hit_ref
 
                     if -HIT_BELOW <= dist <= HIT_ABOVE:
-                        pressed[li] = True
                         if note.is_long:
                             long_press.add(li)
                             holding[li] = True
