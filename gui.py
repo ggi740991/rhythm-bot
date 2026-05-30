@@ -778,7 +778,10 @@ class RhythmBotGUI:
     # ═══════════ 봇 루프 ═══════════
 
     def _bot_loop(self):
-        # ── 시작 시 설정값 캐싱 (매 프레임 tkinter 접근 방지) ──
+        """메인 봇 루프 - 위치 기반 판정"""
+        perf = time.perf_counter
+
+        # ── 설정값 캐싱 ──
         region = {
             "x": self.var_cap_x.get(),
             "y": self.var_cap_y.get(),
@@ -790,6 +793,7 @@ class RhythmBotGUI:
         hsv_upper = [self.var_h_high.get(), self.var_s_high.get(), self.var_v_high.get()]
         judge_ratio = self.var_judge_ratio.get()
         offset_px = self.var_offset_px.get()
+        judge_update_counter = 0
 
         exc_w = self.var_exc_w.get()
         exc_h = self.var_exc_h.get()
@@ -802,21 +806,37 @@ class RhythmBotGUI:
                 "height": exc_h,
             }
 
+        # ── 레인별 상태 ──
+        holding = [False] * lane_count
+        hold_seen = [0.0] * lane_count
+        pressed = [False] * lane_count
+        track_y = [0.0] * lane_count
+
+        # ── 판정 상수 ──
+        HIT_ABOVE = 0       # 판정선 도달 후에만 입력 (예측 없음)
+        HIT_BELOW = 18      # 판정선 아래 18px까지 허용
+        HOLD_GRACE = 0.08   # 롱노트 감지 끊김 허용 (80ms)
+
         last_log_time = 0.0
         frame_count = 0
         preview_open = self._preview_win is not None
 
         while self._running and not self._stop_event.is_set():
             try:
+                self.input_mgr.tick()
                 frame = self.capture.capture(region)
                 if frame is None or frame.size == 0:
                     continue
 
                 h, w = frame.shape[:2]
+
+                judge_update_counter += 1
+                if judge_update_counter % 10 == 0:
+                    judge_ratio = self.var_judge_ratio.get()
+                    offset_px = self.var_offset_px.get()
                 judge_y = int(h * judge_ratio) + offset_px
 
-                # 노트 감지 (디버그 프레임은 미리보기 열려있을 때만)
-                build_debug = preview_open and frame_count % 3 == 0
+                build_debug = preview_open and frame_count % 10 == 0
                 notes = self.detector.detect(
                     frame=frame,
                     lane_count=lane_count,
@@ -828,53 +848,92 @@ class RhythmBotGUI:
                     build_debug=build_debug,
                 )
 
+                now = perf()
                 self._note_count = len(notes)
                 self._fps_display = self.capture.fps
                 frame_count += 1
 
-                # 디버그 로그 (3초마다)
-                now = time.time()
+                # ── 노트 선택: 지나간 노트 제외 ──
+                dead_y = judge_y + HIT_BELOW
+                best = [None] * lane_count
+                for note in notes:
+                    li = note.lane
+                    if li >= lane_count:
+                        continue
+                    if not holding[li]:
+                        ref = note.bottom if note.is_long else note.center_y
+                        if ref > dead_y:
+                            continue
+                    if best[li] is None or note.center_y > best[li].center_y:
+                        best[li] = note
+
+                normal_press = set()
+                long_press = set()
+                release_set = set()
+
+                for li in range(lane_count):
+                    note = best[li]
+
+                    # ── 1) 노트 없음 → pressed 리셋 ──
+                    if note is None:
+                        pressed[li] = False
+                        if holding[li] and now - hold_seen[li] > HOLD_GRACE:
+                            release_set.add(li)
+                            holding[li] = False
+                        continue
+
+                    # ── 2) 롱노트 홀드 중 ──
+                    if holding[li]:
+                        if note.bottom < judge_y - 40:
+                            release_set.add(li)
+                            holding[li] = False
+                            pressed[li] = False
+                            continue
+                        hold_seen[li] = now
+                        if note.y >= judge_y:
+                            release_set.add(li)
+                            holding[li] = False
+                        continue
+
+                    # ── 3) pressed 리셋 판단 ──
+                    if pressed[li]:
+                        hit_ref = note.bottom if note.is_long else note.center_y
+                        new_from_above = hit_ref <= judge_y
+                        y_jumped = note.center_y < track_y[li] - 8
+                        if new_from_above or y_jumped:
+                            pressed[li] = False
+                    track_y[li] = note.center_y
+
+                    if pressed[li]:
+                        continue
+
+                    # ── 4) 히트 판정 ──
+                    hit_ref = note.bottom if note.is_long else note.center_y
+                    dist = judge_y - hit_ref
+
+                    if -HIT_BELOW <= dist <= HIT_ABOVE:
+                        pressed[li] = True
+                        if note.is_long:
+                            long_press.add(li)
+                            holding[li] = True
+                            hold_seen[li] = now
+                        else:
+                            normal_press.add(li)
+
+                # ── 키 입력 실행 ──
+                if normal_press or long_press:
+                    self.input_mgr.press_lanes_batch(normal_press, long_press)
+                if release_set:
+                    self.input_mgr.release_lanes_batch(release_set)
+
+                # ── 주기적 로그 ──
                 if now - last_log_time > 3.0:
                     last_log_time = now
                     preview_open = self._preview_win is not None
                     self._log(
-                        f"노트:{len(notes)}개 | judge={judge_y} | "
-                        f"FPS:{self.capture.fps:.0f} | 입력:{self.input_mgr.press_count}"
+                        f"노트:{len(notes)}개 | FPS:{self.capture.fps:.0f} | "
+                        f"입력:{self.input_mgr.press_count}"
                     )
-
-                # ─── 판정: 노트가 판정선에 도달하면 입력 ───
-                # 판정선 위 35px ~ 아래 10px (정확한 타이밍)
-                hit_top = judge_y - 35
-                hit_bottom = judge_y + 10
-
-                normal_lanes = set()
-                long_lanes = set()
-                for note in notes:
-                    if note.bottom >= hit_top and note.top <= hit_bottom:
-                        if note.is_long:
-                            long_lanes.add(note.lane)
-                        else:
-                            normal_lanes.add(note.lane)
-
-                # 키 입력
-                all_press = normal_lanes | long_lanes
-                if all_press:
-                    self.input_mgr.press_lanes_batch(
-                        normal_lanes - long_lanes, long_lanes
-                    )
-
-                # 롱노트 해제
-                long_hold = set()
-                for note in notes:
-                    if note.is_long and note.bottom >= hit_top and note.top <= judge_y + 20:
-                        long_hold.add(note.lane)
-
-                release = set()
-                for lane in range(lane_count):
-                    if lane not in long_hold and lane not in all_press:
-                        release.add(lane)
-                if release:
-                    self.input_mgr.release_lanes_batch(release)
 
             except Exception as e:
                 self._log(f"오류: {e}")

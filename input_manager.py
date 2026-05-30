@@ -32,6 +32,8 @@ class InputManager:
         self._active_lanes: Set[int] = set()
         self._running = False
         self._press_count = 0
+        self._pending_releases: List[int] = []
+        self._release_after: float = 0.0
 
     def configure(self, key_bindings: List[str], debounce_ms: int = 8,
                   input_delay_ms: int = 0) -> None:
@@ -54,31 +56,54 @@ class InputManager:
                 self._key_held[lane_idx] = False
         self._active_lanes = set()
 
+    def tick(self) -> None:
+        """매 프레임 호출 - 대기 중인 탭 키 릴리즈 처리"""
+        if self._pending_releases and time.perf_counter() >= self._release_after:
+            for lane in self._pending_releases:
+                if lane < len(self._key_bindings):
+                    self._release_key(self._key_bindings[lane])
+            self._pending_releases = []
+
     def press_lanes_batch(self, lanes: Set[int], long_lanes: Set[int]) -> None:
-        """여러 레인의 키를 입력 (keyboard 라이브러리 사용)"""
+        """여러 레인의 키를 동시에 입력 (동타 지원, 논블로킹)"""
         if not self._running:
             return
 
-        now = time.time()
+        # 이전 프레임의 대기 중 릴리즈 먼저 처리
+        self.tick()
+
+        now = time.perf_counter()
+        tap_lanes: List[int] = []
+
         for lane in lanes | long_lanes:
             if lane >= len(self._key_bindings):
                 continue
-            if now - self._last_press_time.get(lane, 0.0) < self._debounce_sec:
-                continue
-            if lane in long_lanes and self._key_held.get(lane, False):
-                continue
+            if lane in long_lanes:
+                # 롱노트: 이미 홀드 중이면 스킵 (디바운스 없음)
+                if self._key_held.get(lane, False):
+                    continue
+            else:
+                # 일반노트: 디바운스로 중복 입력 방지
+                if now - self._last_press_time.get(lane, 0.0) < self._debounce_sec:
+                    continue
 
             key = self._key_bindings[lane]
 
-            if lane in long_lanes:
-                self._press_key(key)
-                self._key_held[lane] = True
-            else:
-                self._tap_key(key)
-
+            # 모든 키를 먼저 누름 (동시 입력)
+            self._press_key(key)
             self._last_press_time[lane] = now
             self._active_lanes.add(lane)
             self._press_count += 1
+
+            if lane in long_lanes:
+                self._key_held[lane] = True
+            else:
+                tap_lanes.append(lane)
+
+        # 탭 키 릴리즈를 다음 프레임으로 예약 (블로킹 없음)
+        if tap_lanes:
+            self._pending_releases.extend(tap_lanes)
+            self._release_after = now + 0.006
 
     def release_lanes_batch(self, lanes: Set[int]) -> None:
         """여러 레인 키를 해제"""
