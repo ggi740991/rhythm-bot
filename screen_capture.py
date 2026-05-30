@@ -50,8 +50,9 @@ class ScreenCapture:
 
         try:
             screenshot = self._sct.grab(monitor)
-            # BGRA -> BGR (numpy slice, no copy)
-            frame = np.asarray(screenshot)[:, :, :3]
+            # BGRA -> BGR via contiguous array (faster for cv2)
+            frame = np.asarray(screenshot)
+            frame = np.ascontiguousarray(frame[:, :, :3])
             self._last_frame = frame
             self._update_fps()
             return frame
